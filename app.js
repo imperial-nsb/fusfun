@@ -25,8 +25,8 @@ const SPEAKER_X_FRACTION = 0.22;  // where the speaker column sits across main p
 const SLIDER_W_FRACTION  = 0.16;  // slider width as fraction of main panel width
 const BEEP_DURATION = 0.20;       // seconds, per-speaker beep length at mic
 
-// Icon sources — replace these files in /assets to change icons.
-const SPEAKER_ICON_SRC = 'assets/speaker.svg';
+// Icon sources come from config.js (window.FUSFUN_CONFIG.icons).
+// Edit config.js to swap icons without touching code.
 
 // ============================================================
 // State
@@ -195,7 +195,7 @@ function rebuildSpeakers() {
     icon.style.width = `${L.iconSize}px`;
     icon.style.height = `${L.iconSize}px`;
     const iconImg = document.createElement('img');
-    iconImg.src = SPEAKER_ICON_SRC;
+    iconImg.src = window.FUSFUN_CONFIG.icons.speaker;
     iconImg.alt = '';
     iconImg.draggable = false;
     icon.appendChild(iconImg);
@@ -721,7 +721,16 @@ function onResize() {
 // ============================================================
 // Boot
 // ============================================================
+function applyIconConfig() {
+  const cfg = (window.FUSFUN_CONFIG && window.FUSFUN_CONFIG.icons) || {};
+  for (const img of document.querySelectorAll('img[data-icon]')) {
+    const key = img.dataset.icon;
+    if (cfg[key]) img.src = cfg[key];
+  }
+}
+
 window.addEventListener('load', () => {
+  applyIconConfig();
   initGL();
   rebuildSpeakers();
   initMic();
