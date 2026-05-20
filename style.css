@@ -27,14 +27,25 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 0 12px 0;
+  padding: 20px 0 12px 0;
+  gap: 18px;
 }
-#freq-title {
+.setting-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+.setting-block.freq-block {
+  flex: 1;          /* let frequency section soak up vertical space */
+  min-height: 0;
+}
+.setting-title {
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #5b6b7d;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   text-align: center;
   font-weight: 600;
 }
@@ -263,28 +274,25 @@ html, body {
 }
 .btn:hover { background: #f4f6fa; }
 .btn:active { transform: scale(0.96); }
-.btn.primary { background: #1f4e79; color: white; border-color: #1f4e79; }
-.btn.primary:hover { background: #2e6cab; }
 
 #count {
-  position: absolute;
-  top: 18px; left: 18px;
-  z-index: 6;
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 2px;
   background: white; border: 2px solid #1f2a36;
-  border-radius: 8px; padding: 4px;
+  border-radius: 8px; padding: 3px;
 }
 #count button {
-  width: 32px; height: 32px;
+  width: 26px; height: 26px;
   border: none; background: transparent;
   font-size: 18px; font-weight: 700;
   cursor: pointer; border-radius: 5px;
   color: #1f2a36;
+  line-height: 1;
 }
 #count button:hover { background: #f0f2f6; }
 #count span {
-  padding: 0 10px;
-  font-size: 14px; font-weight: 600;
-  min-width: 92px; text-align: center;
+  padding: 0 8px;
+  font-size: 16px; font-weight: 700;
+  min-width: 26px; text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 

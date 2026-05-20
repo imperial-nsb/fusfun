@@ -9,29 +9,36 @@
 <body>
 <div id="app">
 
-  <!-- Left: frequency control -->
+  <!-- Left: settings bar (speakers count + frequency control) -->
   <div id="freq-panel">
-    <div id="freq-title">Frequency</div>
-    <div id="freq-track-wrap">
-      <div id="freq-track"></div>
-      <div id="freq-thumb"></div>
+
+    <div class="setting-block">
+      <div class="setting-title">Speakers</div>
+      <div id="count">
+        <button id="btn-minus" aria-label="Fewer speakers">−</button>
+        <span id="count-label">8</span>
+        <button id="btn-plus" aria-label="More speakers">+</button>
+      </div>
     </div>
-    <div id="freq-speaker" title="Click to play beep">
-      <img data-icon="freqSpeaker" alt="" draggable="false" />
+
+    <div class="setting-block freq-block">
+      <div class="setting-title">Frequency</div>
+      <div id="freq-track-wrap">
+        <div id="freq-track"></div>
+        <div id="freq-thumb"></div>
+      </div>
+      <div id="freq-speaker" title="Click to play beep">
+        <img data-icon="freqSpeaker" alt="" draggable="false" />
+      </div>
+      <div id="freq-label">800 Hz</div>
+      <div id="freq-sublabel">drag · click for beep</div>
     </div>
-    <div id="freq-label">800 Hz</div>
-    <div id="freq-sublabel">drag · click for beep</div>
+
   </div>
 
   <!-- Main: array + wave field -->
   <div id="main-panel">
     <canvas id="wave-canvas"></canvas>
-
-    <div id="count">
-      <button id="btn-minus" aria-label="Fewer speakers">−</button>
-      <span id="count-label">8 speakers</span>
-      <button id="btn-plus" aria-label="More speakers">+</button>
-    </div>
 
     <div id="speakers-layer"></div>
 
@@ -46,7 +53,7 @@
 
     <div id="controls">
       <button class="btn" id="btn-random">Random</button>
-      <button class="btn primary" id="btn-focus">Focus</button>
+      <button class="btn" id="btn-focus">Focus</button>
     </div>
 
     <div id="brand">

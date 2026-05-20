@@ -225,7 +225,7 @@ function rebuildSpeakers() {
     wireSpeakerRow(sp);
   }
 
-  document.getElementById('count-label').textContent = `${state.n} speaker${state.n > 1 ? 's' : ''}`;
+  document.getElementById('count-label').textContent = `${state.n}`;
 }
 
 function updateThumbPosition(sp) {
