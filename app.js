@@ -6,17 +6,24 @@
 // Tunables. Adjust freely; defaults chosen to look good on a 1400×800
 // laptop screen at the default 8-speaker count.
 // ============================================================
-const C_VIS    = 480;             // wave speed (pixels per second)
+const C_VIS = 240;             // wave speed (pixels per second)
 const SIGMA    = 32;              // wave-packet envelope width (pixels)
-const VIS_WL   = 52;              // visual wavelength in pixels (cosmetic — independent of audio freq)
-const K        = 2 * Math.PI / VIS_WL;
+// Visual wavelength is anchored at the reference frequency, then scaled by
+// the physical λ ∝ 1/f relationship. The wavelength used for a packet is
+// captured at the moment it fires (see sp.firedFreq), so changing the
+// frequency slider mid-flight does NOT retroactively warp packets already
+// in the air — each ring set reflects the frequency that produced it.
+const VIS_WL_REF_FREQ = 800;      // Hz: frequency at which VIS_WL_REF_PX applies
+const VIS_WL_REF_PX   = 52;       // pixels: visual wavelength at the reference freq
+function wavelengthForFreq(f) { return VIS_WL_REF_PX * VIS_WL_REF_FREQ / f; }
+function kForFreq(f) { return 2 * Math.PI / wavelengthForFreq(f); }
 const PACKET_LIFETIME = 4.0;      // seconds before a wave packet is dropped from the field
 const N_MIN = 2, N_MAX = 16, N_DEFAULT = 8;
 const FREQ_MIN = 220, FREQ_MAX = 1800;
 const FREQ_DEFAULT = 800;
 const SPEAKER_X_FRACTION = 0.22;  // where the speaker column sits across main panel width
 const SLIDER_W_FRACTION  = 0.16;  // slider width as fraction of main panel width
-const BEEP_DURATION = 0.10;       // seconds, per-speaker beep length at mic
+const BEEP_DURATION = 0.20;       // seconds, per-speaker beep length at mic
 
 // Icon sources — replace these files in /assets to change icons.
 const SPEAKER_ICON_SRC = 'assets/speaker.svg';
@@ -201,6 +208,7 @@ function rebuildSpeakers() {
       delayFrac: 0,                   // 0..1, scaled by layout.tMax for actual seconds
       cursorStart: -Infinity,
       fireStart: -Infinity,
+      firedFreq: FREQ_DEFAULT,        // captured at fire time → controls visual wavelength
       armed: false,
       row,
       sliderEl: slider,
@@ -321,12 +329,13 @@ function tick(now) {
       if (sp.armed && sweepT >= delaySec) {
         sp.armed = false;
         sp.fireStart = sp.cursorStart + delaySec;
+        sp.firedFreq = state.freq;              // freeze freq at emit-time → visual wavelength
         sp.iconEl.classList.add('fired');
         setTimeout(() => sp.iconEl.classList.remove('fired'), 220);
         const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
         const travelTime = d / C_VIS;
         const amp = 0.55 / Math.sqrt(d / 220 + 1);
-        playBeep(travelTime, amp, state.freq);
+        playBeep(travelTime, amp, sp.firedFreq);
       }
     }
   }
@@ -350,7 +359,8 @@ function fieldAtPoint(px, py, t) {
     const wr = C_VIS * dt;
     const arg = r - wr;
     const env = Math.exp(-arg*arg / (2 * SIGMA * SIGMA));
-    f += env * Math.cos(K * arg) / Math.sqrt(r + 50);
+    const k = kForFreq(sp.firedFreq);
+    f += env * Math.cos(k * arg) / Math.sqrt(r + 50);
   }
   return f;
 }
@@ -389,9 +399,9 @@ uniform int uN;
 uniform vec2 uPos[16];
 uniform float uStart[16];
 uniform float uActive[16];
+uniform float uK[16];      // per-packet visual wavenumber (depends on freq at emit time)
 uniform float uC;
 uniform float uSigma;
-uniform float uK;
 uniform float uLifetime;
 void main() {
   // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
@@ -407,7 +417,7 @@ void main() {
     float wr = uC * dt;
     float arg = r - wr;
     float env = exp(-arg*arg / (2.0 * uSigma * uSigma));
-    float osc = cos(uK * arg);
+    float osc = cos(uK[i] * arg);
     field += env * osc / sqrt(r + 50.0);
   }
   float v = clamp(field * 7.0, -1.0, 1.0);
@@ -475,7 +485,6 @@ function initGL() {
 
   gl.uniform1f(uniforms.uC, C_VIS);
   gl.uniform1f(uniforms.uSigma, SIGMA);
-  gl.uniform1f(uniforms.uK, K);
   gl.uniform1f(uniforms.uLifetime, PACKET_LIFETIME);
 
   resizeGL();
@@ -506,6 +515,7 @@ function renderWaveField() {
   const posArr = new Float32Array(N_MAX * 2);
   const startArr = new Float32Array(N_MAX);
   const activeArr = new Float32Array(N_MAX);
+  const kArr = new Float32Array(N_MAX);
   for (let i = 0; i < N; i++) {
     const sp = state.speakers[i];
     posArr[2*i + 0] = sp.x;
@@ -514,14 +524,17 @@ function renderWaveField() {
     if (sp.fireStart !== -Infinity && dt >= 0 && dt <= PACKET_LIFETIME) {
       startArr[i] = sp.fireStart;
       activeArr[i] = 1.0;
+      kArr[i] = kForFreq(sp.firedFreq);
     } else {
       startArr[i] = 0;
       activeArr[i] = 0.0;
+      kArr[i] = 0;
     }
   }
   gl.uniform2fv(uniforms.uPos, posArr);
   gl.uniform1fv(uniforms.uStart, startArr);
   gl.uniform1fv(uniforms.uActive, activeArr);
+  gl.uniform1fv(uniforms.uK, kArr);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
