@@ -1,0 +1,21 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sp-cone" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8a9cb0"/>
+      <stop offset="0.5" stop-color="#4a5d72"/>
+      <stop offset="1" stop-color="#28384a"/>
+    </linearGradient>
+    <radialGradient id="sp-dome" cx="0.35" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#aabbcc"/>
+      <stop offset="0.6" stop-color="#5c7088"/>
+      <stop offset="1" stop-color="#22303f"/>
+    </radialGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="6" fill="#1f2a36"/>
+  <path d="M 8 22 L 22 22 L 40 8 L 40 56 L 22 42 L 8 42 Z"
+        fill="url(#sp-cone)" stroke="#0e1620" stroke-width="1.5" stroke-linejoin="round"/>
+  <ellipse cx="40" cy="32" rx="8" ry="20"
+           fill="url(#sp-dome)" stroke="#0e1620" stroke-width="1.5"/>
+  <ellipse cx="40" cy="32" rx="4" ry="14" fill="#1a2632"/>
+  <circle cx="40" cy="32" r="2" fill="#3a4a5d"/>
+</svg>

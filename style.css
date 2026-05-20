@@ -1,0 +1,265 @@
+/* ============================================================
+ * Phased Array Focusing — styles
+ * ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%; width: 100%; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: linear-gradient(180deg, #eef2f7 0%, #dbe3ee 100%);
+  color: #1f2a36;
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  height: 100vh; width: 100vw;
+  padding: 18px;
+  gap: 14px;
+}
+
+/* ---------------- Frequency panel (left) ---------------- */
+#freq-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0 12px 0;
+}
+#freq-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5b6b7d;
+  margin-bottom: 14px;
+  text-align: center;
+  font-weight: 600;
+}
+#freq-track-wrap {
+  flex: 1;
+  width: 30px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+}
+#freq-track {
+  width: 6px; height: 100%;
+  background: linear-gradient(180deg, #e53935 0%, #c62828 100%);
+  border-radius: 3px;
+  box-shadow: 0 0 12px rgba(229, 57, 53, 0.35);
+  pointer-events: none;
+}
+#freq-thumb {
+  position: absolute;
+  width: 28px; height: 28px;
+  background: radial-gradient(circle at 35% 35%, #ff6b66, #c62828);
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(198, 40, 40, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  pointer-events: auto;
+}
+#freq-thumb:active { cursor: grabbing; }
+
+#freq-speaker {
+  width: 64px; height: 64px;
+  margin-top: 16px;
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+#freq-speaker:active { transform: scale(0.92); }
+#freq-speaker img { width: 100%; height: 100%; display: block; }
+
+#freq-label {
+  font-size: 14px; font-weight: 600;
+  margin-top: 8px;
+  color: #2a3a4d;
+  font-variant-numeric: tabular-nums;
+}
+#freq-sublabel {
+  font-size: 11px; color: #6a7a8a; margin-top: 2px;
+}
+
+/* ---------------- Main panel ---------------- */
+#main-panel {
+  position: relative;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(20, 40, 80, 0.08), 0 1px 2px rgba(20, 40, 80, 0.04);
+  overflow: hidden;
+}
+#wave-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 1;
+}
+
+#title {
+  position: absolute;
+  top: 16px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  text-align: center;
+  pointer-events: none;
+}
+#title h1 {
+  font-size: 18px; font-weight: 700; letter-spacing: 0.02em;
+  color: #1f2a36;
+}
+#title p {
+  font-size: 12px; color: #5b6b7d; margin-top: 2px;
+}
+
+/* Speaker rows */
+#speakers-layer {
+  position: absolute; inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.speaker-row {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+.delay-slider {
+  position: relative;
+  height: 36px;
+  cursor: pointer;
+}
+.delay-slider .track {
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #1f4e79, #2e6cab);
+  border-radius: 3px;
+  transform: translateY(-50%);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.delay-slider .thumb {
+  position: absolute;
+  width: 22px; height: 22px;
+  background: radial-gradient(circle at 35% 35%, #4a82c2, #1f4e79);
+  border-radius: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  box-shadow: 0 2px 6px rgba(31, 78, 121, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.3);
+}
+.delay-slider .thumb:active { cursor: grabbing; }
+.delay-slider .cursor {
+  position: absolute;
+  width: 3px; height: 26px;
+  background: #ffd54a;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(255, 213, 74, 0.9), 0 0 4px rgba(255, 213, 74, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  border-radius: 1.5px;
+}
+.delay-slider.armed .cursor { opacity: 1; }
+.speaker-icon {
+  margin-left: 10px;
+  cursor: pointer;
+  transition: transform 0.08s ease, filter 0.1s ease;
+  flex-shrink: 0;
+}
+.speaker-icon:active { transform: scale(0.9); }
+.speaker-icon.fired { filter: drop-shadow(0 0 8px rgba(255, 213, 74, 0.9)); }
+.speaker-icon img { display: block; width: 100%; height: 100%; pointer-events: none; }
+
+/* Mic */
+#mic {
+  position: absolute;
+  z-index: 4;
+  cursor: grab;
+  transform: translate(-50%, -50%);
+  transition: filter 0.06s ease;
+}
+#mic:active { cursor: grabbing; }
+#mic img { display: block; width: 100%; height: 100%; pointer-events: none; }
+
+/* Play button */
+#play {
+  position: absolute;
+  top: 18px; right: 18px;
+  width: 64px; height: 64px;
+  border: none;
+  background: #2a9d4a;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  box-shadow: 0 4px 14px rgba(42, 157, 74, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+#play:hover { background: #34b358; }
+#play:active { transform: scale(0.94); }
+#play img { width: 26px; height: 26px; margin-left: 4px; pointer-events: none; }
+
+/* Bottom controls */
+#controls {
+  position: absolute;
+  bottom: 18px; left: 18px;
+  display: flex;
+  gap: 10px;
+  z-index: 6;
+  align-items: center;
+}
+.btn {
+  padding: 11px 22px;
+  border: 2px solid #1f2a36;
+  background: white;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #1f2a36;
+  transition: background 0.12s ease, transform 0.08s ease;
+  font-family: inherit;
+}
+.btn:hover { background: #f4f6fa; }
+.btn:active { transform: scale(0.96); }
+.btn.primary { background: #1f4e79; color: white; border-color: #1f4e79; }
+.btn.primary:hover { background: #2e6cab; }
+
+#count {
+  display: flex; align-items: center; gap: 4px;
+  background: white; border: 2px solid #1f2a36;
+  border-radius: 8px; padding: 4px;
+}
+#count button {
+  width: 32px; height: 32px;
+  border: none; background: transparent;
+  font-size: 18px; font-weight: 700;
+  cursor: pointer; border-radius: 5px;
+  color: #1f2a36;
+}
+#count button:hover { background: #f0f2f6; }
+#count span {
+  padding: 0 10px;
+  font-size: 14px; font-weight: 600;
+  min-width: 92px; text-align: center;
+}
+
+/* Help text — kept below mic z-order so the mic stays visible when dragged over it */
+#help {
+  position: absolute;
+  bottom: 18px; right: 18px;
+  z-index: 2;
+  font-size: 11px;
+  color: #5b6b7d;
+  text-align: right;
+  line-height: 1.4;
+  pointer-events: none;
+}
