@@ -10,15 +10,24 @@ const C_VIS = 240;             // wave speed (pixels per second)
 const SIGMA    = 32;              // wave-packet envelope width (pixels)
 // Visual wavelength is anchored at the reference frequency, then scaled by
 // the physical λ ∝ 1/f relationship. The wavelength used for a packet is
-// captured at the moment it fires (see sp.firedFreq), so changing the
-// frequency slider mid-flight does NOT retroactively warp packets already
+// captured at the moment it fires (baked into each packet's k), so changing
+// the frequency slider mid-flight does NOT retroactively warp packets already
 // in the air — each ring set reflects the frequency that produced it.
 const VIS_WL_REF_FREQ = 800;      // Hz: frequency at which VIS_WL_REF_PX applies
 const VIS_WL_REF_PX   = 52;       // pixels: visual wavelength at the reference freq
 function wavelengthForFreq(f) { return VIS_WL_REF_PX * VIS_WL_REF_FREQ / f; }
 function kForFreq(f) { return 2 * Math.PI / wavelengthForFreq(f); }
-const PACKET_LIFETIME = 4.0;      // seconds before a wave packet is dropped from the field
+// Wave-packet lifetime is computed per-layout (see computeLayout): the packet
+// lives long enough for its envelope to fully exit the visible canvas from the
+// worst-case speaker position. PACKET_ENVELOPE_MARGIN is the headroom past the
+// far corner, expressed in σ-units, so the Gaussian tail is below ~exp(-8).
+const PACKET_ENVELOPE_MARGIN = 4;
 const N_MIN = 2, N_MAX = 16, N_DEFAULT = 8;
+// Max wave packets concurrently in flight across all speakers. Re-firing a
+// speaker pushes a new packet instead of replacing the previous one, so this
+// caps how many overlapping rings can coexist. 4× N_MAX comfortably absorbs
+// a few rounds of mashing before old packets time out.
+const MAX_PACKETS = 64;
 const FREQ_MIN = 220, FREQ_MAX = 2500;
 const FREQ_DEFAULT = 800;
 const SPEAKER_X_FRACTION = 0.22;  // where the speaker column sits across main panel width
@@ -35,6 +44,7 @@ const state = {
   freq: FREQ_DEFAULT,
   n: N_DEFAULT,
   speakers: [],         // see rebuildSpeakers() for shape
+  packets: [],          // {x, y, fireStart, k} — live wave packets, GC'd each frame
   mic: { x: 800, y: 400 },
   dragging: null,       // 'freq' | 'mic' | { type:'delay', sp }
   freqThumbPos: 0,      // 0..1, 0=bottom (low), 1=top (high)
@@ -155,6 +165,12 @@ function computeLayout() {
   }
   const tMax = Math.max(0.05, (dMax - dMin) / C_VIS);
 
+  // Farthest a wave can need to travel: from the speaker column to whichever
+  // canvas corner is furthest. Speakers live at x=speakerX, y∈[topPad,h-botPad],
+  // so the worst-case dy is max(topPad, botPad) further than h/2 — bound by h.
+  const maxTravel = Math.hypot(Math.max(speakerX, w - speakerX), h);
+  const packetLifetime = (maxTravel + PACKET_ENVELOPE_MARGIN * SIGMA) / C_VIS;
+
   return {
     w, h,
     speakerX, sliderW, sliderLeft,
@@ -162,6 +178,7 @@ function computeLayout() {
     iconSize, tMax,
     rowHeight: usable / n,
     yFor,
+    packetLifetime,
   };
 }
 
@@ -172,6 +189,7 @@ function rebuildSpeakers() {
   const layer = document.getElementById('speakers-layer');
   layer.innerHTML = '';
   state.speakers = [];
+  state.packets.length = 0;   // drop in-flight wave packets from prior speaker set
   state.layout = computeLayout();
   const L = state.layout;
 
@@ -213,8 +231,6 @@ function rebuildSpeakers() {
       y,
       delayFrac: 0,                   // 0..1, scaled by layout.tMax for actual seconds
       cursorStart: -Infinity,
-      fireStart: -Infinity,
-      firedFreq: FREQ_DEFAULT,        // captured at fire time → controls visual wavelength
       armed: false,
       row,
       sliderEl: slider,
@@ -337,8 +353,9 @@ function tick(now) {
       sp.cursorEl.style.left = `${frac * L.sliderW}px`;
       if (sp.armed && sweepT >= delaySec) {
         sp.armed = false;
-        sp.fireStart = sp.cursorStart + delaySec;
-        sp.firedFreq = state.freq;              // freeze freq at emit-time → visual wavelength
+        const fireStart = sp.cursorStart + delaySec;
+        const firedFreq = state.freq;           // freeze freq at emit-time → visual wavelength
+        emitPacket(sp.x, sp.y, fireStart, firedFreq);
         sp.iconEl.classList.add('fired');
         sp.thumbEl.classList.add('fired');
         setTimeout(() => {
@@ -356,7 +373,7 @@ function tick(now) {
         const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
         const visualLead = 0.7 * SIGMA / C_VIS;
         const scheduleTime = Math.max(0, travelTime - sysLatency - visualLead);
-        playBeep(scheduleTime, amp, sp.firedFreq);
+        playBeep(scheduleTime, amp, firedFreq);
       }
     }
   }
@@ -367,21 +384,40 @@ function tick(now) {
 }
 
 // ============================================================
+// Wave packets — one per fire event, independent of which speaker emitted them
+// ============================================================
+function emitPacket(x, y, fireStart, firedFreq) {
+  // Cap concurrent packets: if the pool is full, evict the oldest. With
+  // MAX_PACKETS sized at 4× N_MAX this only kicks in under sustained mashing.
+  if (state.packets.length >= MAX_PACKETS) state.packets.shift();
+  state.packets.push({ x, y, fireStart, k: kForFreq(firedFreq) });
+}
+
+function pruneExpiredPackets(t) {
+  const lifetime = state.layout.packetLifetime;
+  const live = state.packets;
+  let w = 0;
+  for (let r = 0; r < live.length; r++) {
+    if (t - live[r].fireStart <= lifetime) live[w++] = live[r];
+  }
+  live.length = w;
+}
+
+// ============================================================
 // Mic glow (sample the field on CPU using the same equation as the shader)
 // ============================================================
 function fieldAtPoint(px, py, t) {
   let f = 0;
-  for (const sp of state.speakers) {
-    if (sp.fireStart === -Infinity) continue;
-    const dt = t - sp.fireStart;
-    if (dt < 0 || dt > PACKET_LIFETIME) continue;
-    const dx = sp.x - px, dy = sp.y - py;
+  const lifetime = state.layout.packetLifetime;
+  for (const pk of state.packets) {
+    const dt = t - pk.fireStart;
+    if (dt < 0 || dt > lifetime) continue;
+    const dx = pk.x - px, dy = pk.y - py;
     const r = Math.sqrt(dx*dx + dy*dy);
     const wr = C_VIS * dt;
     const arg = r - wr;
     const env = Math.exp(-arg*arg / (2 * SIGMA * SIGMA));
-    const k = kForFreq(sp.firedFreq);
-    f += env * Math.cos(k * arg) / Math.sqrt(r + 50);
+    f += env * Math.cos(pk.k * arg) / Math.sqrt(r + 50);
   }
   return f;
 }
@@ -416,11 +452,10 @@ out vec4 outColor;
 uniform vec2 uResolution;   // physical pixels (matches gl_FragCoord)
 uniform float uDpr;
 uniform float uTime;
-uniform int uN;
-uniform vec2 uPos[16];
-uniform float uStart[16];
-uniform float uActive[16];
-uniform float uK[16];      // per-packet visual wavenumber (depends on freq at emit time)
+uniform int uN;             // number of live packets this frame
+uniform vec2 uPos[64];
+uniform float uStart[64];
+uniform float uK[64];       // per-packet visual wavenumber (depends on freq at emit time)
 uniform float uC;
 uniform float uSigma;
 uniform float uLifetime;
@@ -428,9 +463,8 @@ void main() {
   // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
   vec2 p = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y) / uDpr;
   float field = 0.0;
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 64; i++) {
     if (i >= uN) break;
-    if (uActive[i] < 0.5) continue;
     float dt = uTime - uStart[i];
     if (dt < 0.0 || dt > uLifetime) continue;
     vec2 d = p - uPos[i];
@@ -497,7 +531,6 @@ function initGL() {
     uN:          gl.getUniformLocation(program, 'uN'),
     uPos:        gl.getUniformLocation(program, 'uPos'),
     uStart:      gl.getUniformLocation(program, 'uStart'),
-    uActive:     gl.getUniformLocation(program, 'uActive'),
     uC:          gl.getUniformLocation(program, 'uC'),
     uSigma:      gl.getUniformLocation(program, 'uSigma'),
     uK:          gl.getUniformLocation(program, 'uK'),
@@ -506,7 +539,6 @@ function initGL() {
 
   gl.uniform1f(uniforms.uC, C_VIS);
   gl.uniform1f(uniforms.uSigma, SIGMA);
-  gl.uniform1f(uniforms.uLifetime, PACKET_LIFETIME);
 
   resizeGL();
 }
@@ -526,35 +558,28 @@ function resizeGL() {
 function renderWaveField() {
   if (!gl) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const lifetime = state.layout.packetLifetime;
+  pruneExpiredPackets(state.simTime);
   gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
   gl.uniform1f(uniforms.uDpr, dpr);
   gl.uniform1f(uniforms.uTime, state.simTime);
+  gl.uniform1f(uniforms.uLifetime, lifetime);
 
-  const N = state.speakers.length;
+  const N = state.packets.length;
   gl.uniform1i(uniforms.uN, N);
 
-  const posArr = new Float32Array(N_MAX * 2);
-  const startArr = new Float32Array(N_MAX);
-  const activeArr = new Float32Array(N_MAX);
-  const kArr = new Float32Array(N_MAX);
+  const posArr = new Float32Array(MAX_PACKETS * 2);
+  const startArr = new Float32Array(MAX_PACKETS);
+  const kArr = new Float32Array(MAX_PACKETS);
   for (let i = 0; i < N; i++) {
-    const sp = state.speakers[i];
-    posArr[2*i + 0] = sp.x;
-    posArr[2*i + 1] = sp.y;
-    const dt = state.simTime - sp.fireStart;
-    if (sp.fireStart !== -Infinity && dt >= 0 && dt <= PACKET_LIFETIME) {
-      startArr[i] = sp.fireStart;
-      activeArr[i] = 1.0;
-      kArr[i] = kForFreq(sp.firedFreq);
-    } else {
-      startArr[i] = 0;
-      activeArr[i] = 0.0;
-      kArr[i] = 0;
-    }
+    const pk = state.packets[i];
+    posArr[2*i + 0] = pk.x;
+    posArr[2*i + 1] = pk.y;
+    startArr[i] = pk.fireStart;
+    kArr[i] = pk.k;
   }
   gl.uniform2fv(uniforms.uPos, posArr);
   gl.uniform1fv(uniforms.uStart, startArr);
-  gl.uniform1fv(uniforms.uActive, activeArr);
   gl.uniform1fv(uniforms.uK, kArr);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);

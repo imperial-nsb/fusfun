@@ -13,7 +13,7 @@
 window.FUSFUN_CONFIG = {
   icons: {
     speaker:     { src: 'assets/speaker.png', rotate: 45 },   // array elements
-    freqSpeaker: { src: 'assets/speaker.png', rotate: 45 },   // preview by the freq slider
+    freqSpeaker: { src: 'assets/speaker.png', rotate: 0 },   // preview by the freq slider
     microphone:  { src: 'assets/microphone.png', rotate: -90 },
     play:        { src: 'assets/play.svg' },
   },
