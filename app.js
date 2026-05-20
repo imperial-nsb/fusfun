@@ -679,6 +679,14 @@ function initButtons() {
     e.preventDefault();
     if (state.n > N_MIN) { state.n--; rebuildSpeakers(); }
   });
+
+  // Spacebar = play (suppress page scroll, ignore key repeat)
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.repeat) return;
+    e.preventDefault();
+    ensureAudio();
+    fireAll();
+  });
 }
 
 // ============================================================
