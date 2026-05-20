@@ -256,9 +256,14 @@ html, body {
   position: absolute;
   bottom: 18px; left: 18px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   z-index: 6;
   align-items: center;
+}
+#controls .btn {
+  width: 84px;        /* identical width for Random and Focus */
+  padding: 7px 0;
+  font-size: 13px;
 }
 .btn {
   padding: 11px 22px;
