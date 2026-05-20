@@ -222,6 +222,20 @@ html, body {
 #play:active { transform: scale(0.94); }
 #play img { width: 26px; height: 26px; margin-left: 4px; pointer-events: none; }
 
+#play-hint {
+  position: absolute;
+  top: 88px;        /* 18 (play top) + 64 (play height) + 6 gap */
+  right: 18px;
+  width: 64px;      /* matches play button → label centers under it */
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #5b6b7d;
+  z-index: 6;
+  pointer-events: none;
+  font-variant: small-caps;
+}
+
 /* Bottom controls */
 #controls {
   position: absolute;
