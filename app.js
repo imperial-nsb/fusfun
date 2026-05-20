@@ -430,17 +430,13 @@ void main() {
     float osc = cos(uK[i] * arg);
     field += env * osc / sqrt(r + 50.0);
   }
-  // Magnitude → inferno. Zero field → near-black background; peaks → yellow.
-  // Polynomial fit of matplotlib's inferno colormap (Matt Zucker).
-  float t = clamp(abs(field) * 7.0, 0.0, 1.0);
-  const vec3 ic0 = vec3(0.0002189403691192265, 0.001651004631001012, -0.01948089843709184);
-  const vec3 ic1 = vec3(0.1065134194856116, 0.5639564367884091, 3.932712388889277);
-  const vec3 ic2 = vec3(11.60249308247187, -3.972853965665698, -15.9423941062914);
-  const vec3 ic3 = vec3(-41.70399613139459, 17.43639888205313, 44.35414519872813);
-  const vec3 ic4 = vec3(77.162935699427, -33.40235894210092, -81.80730925738993);
-  const vec3 ic5 = vec3(-71.31942824499214, 32.62606426397723, 73.20951985803202);
-  const vec3 ic6 = vec3(25.13112622477341, -12.24266895238567, -23.07032500287172);
-  vec3 col = ic0 + t*(ic1 + t*(ic2 + t*(ic3 + t*(ic4 + t*(ic5 + t*ic6)))));
+  float v = clamp(field * 7.0, -1.0, 1.0);
+  vec3 base = vec3(1.0);
+  vec3 hot  = vec3(0.92, 0.18, 0.18);
+  vec3 cold = vec3(0.16, 0.36, 0.86);
+  vec3 col;
+  if (v > 0.0) col = mix(base, hot, v);
+  else         col = mix(base, cold, -v);
   outColor = vec4(col, 1.0);
 }`;
 
