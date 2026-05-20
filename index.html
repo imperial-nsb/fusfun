@@ -317,7 +317,6 @@
 // Constants
 // ============================================================
 const C_VIS    = 480;             // wave speed (pixels per second)
-const T_MAX    = 1.6;             // max delay range on each slider (seconds)
 const SIGMA    = 32;              // wave-packet envelope width (pixels)
 const VIS_WL   = 52;              // visual wavelength in pixels (cosmetic — independent of audio freq)
 const K        = 2 * Math.PI / VIS_WL;
@@ -486,13 +485,30 @@ function computeLayout() {
   const sliderW  = w * SLIDER_W_FRACTION;
   // Slider sits to the left of the icon; account for icon half-width + 10px margin
   const sliderLeft = speakerX - iconSize/2 - 10 - sliderW;
+  const yFor = (i) => topPad + usable * (n === 1 ? 0.5 : (i + 0.5) / n);
+
+  // tMax = max focus delay needed when mic is at its closest allowed position.
+  // Mic is clamped to x ≥ speakerX + iconSize (see setMicPosition), so the
+  // worst case is mic at minMicX, centered vertically. Compute the actual
+  // (d_max − d_min) at that position for the current N to size the slider.
+  const minMicX = speakerX + iconSize;
+  const micY = topPad + usable / 2;
+  let dMin = Infinity, dMax = 0;
+  for (let i = 0; i < n; i++) {
+    const sy = yFor(i);
+    const d = Math.hypot(minMicX - speakerX, sy - micY);
+    if (d < dMin) dMin = d;
+    if (d > dMax) dMax = d;
+  }
+  const tMax = Math.max(0.05, (dMax - dMin) / C_VIS);
+
   return {
     w, h,
     speakerX, sliderW, sliderLeft,
     topPad, botPad, usable,
-    iconSize,
+    iconSize, tMax,
     rowHeight: usable / n,
-    yFor: (i) => topPad + usable * (n === 1 ? 0.5 : (i + 0.5) / n),
+    yFor,
   };
 }
 
@@ -538,7 +554,7 @@ function rebuildSpeakers() {
     const sp = {
       x: L.speakerX,                  // L.speakerX is the icon center x; wave emits from there
       y,
-      delay: 0,
+      delayFrac: 0,                   // 0..1, scaled by layout.tMax for actual seconds
       cursorStart: -Infinity,
       fireStart: -Infinity,
       armed: false,
@@ -563,8 +579,7 @@ function rebuildSpeakers() {
 
 function updateThumbPosition(sp) {
   const L = state.layout;
-  const frac = sp.delay / T_MAX;
-  sp.thumbEl.style.left = `${frac * L.sliderW}px`;
+  sp.thumbEl.style.left = `${sp.delayFrac * L.sliderW}px`;
 }
 
 function wireSpeakerRow(sp) {
@@ -601,7 +616,7 @@ function moveDelayFromEvent(e, sp) {
   const rect = sp.sliderEl.getBoundingClientRect();
   let frac = (e.clientX - rect.left) / rect.width;
   frac = Math.max(0, Math.min(1, frac));
-  sp.delay = frac * T_MAX;
+  sp.delayFrac = frac;
   updateThumbPosition(sp);
 }
 
@@ -622,20 +637,20 @@ function fireAll() {
 
 function applyRandomDelays() {
   for (const sp of state.speakers) {
-    sp.delay = Math.random() * T_MAX;
+    sp.delayFrac = Math.random();
     updateThumbPosition(sp);
   }
 }
 
 function applyFocusDelays() {
-  // delay_i = (d_max - d_i) / C_VIS, where d_i is speaker-to-mic distance
+  // delay_i = (d_max - d_i) / C_VIS, where d_i is speaker-to-mic distance.
+  // tMax is sized so that at the closest mic position this exactly spans the slider.
+  const tMax = state.layout.tMax;
   const dists = state.speakers.map(sp => Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y));
   const dmax = Math.max(...dists);
   state.speakers.forEach((sp, i) => {
-    const d = dists[i];
-    let delay = (dmax - d) / C_VIS;
-    delay = Math.max(0, Math.min(T_MAX, delay));
-    sp.delay = delay;
+    const delaySec = (dmax - dists[i]) / C_VIS;
+    sp.delayFrac = Math.max(0, Math.min(1, delaySec / tMax));
     updateThumbPosition(sp);
   });
 }
@@ -651,24 +666,26 @@ function tick(now) {
   state.simTime += dt;
 
   // For each speaker: animate cursor; check if cursor crossed dot → fire wave packet
+  const L = state.layout;
+  const tMax = L.tMax;
   for (const sp of state.speakers) {
     const sweepT = state.simTime - sp.cursorStart;   // time since cursor began
-    const L = state.layout;
+    const delaySec = sp.delayFrac * tMax;
     if (sp.cursorStart === -Infinity || sweepT < 0) {
       // not armed yet, ensure invisible
       sp.sliderEl.classList.remove('armed');
-    } else if (sweepT > T_MAX + 0.2) {
+    } else if (sweepT > tMax + 0.2) {
       // sweep finished
       sp.sliderEl.classList.remove('armed');
       sp.cursorStart = -Infinity;
     } else {
       sp.sliderEl.classList.add('armed');
-      const frac = Math.min(1, sweepT / T_MAX);
+      const frac = Math.min(1, sweepT / tMax);
       sp.cursorEl.style.left = `${frac * L.sliderW}px`;
       // Has it crossed the dot?
-      if (sp.armed && sweepT >= sp.delay) {
+      if (sp.armed && sweepT >= delaySec) {
         sp.armed = false;
-        sp.fireStart = sp.cursorStart + sp.delay;
+        sp.fireStart = sp.cursorStart + delaySec;
         sp.iconEl.classList.add('fired');
         setTimeout(() => sp.iconEl.classList.remove('fired'), 220);
         // Schedule beep at mic with travel-time delay
