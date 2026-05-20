@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>Phased Array Focusing — FUS Outreach</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; width: 100%; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: linear-gradient(180deg, #eef2f7 0%, #dbe3ee 100%);
+    color: #1f2a36;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    height: 100vh; width: 100vw;
+    padding: 18px;
+    gap: 14px;
+  }
+
+  /* ---------------- Frequency panel (left) ---------------- */
+  #freq-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 0 12px 0;
+  }
+  #freq-title {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #5b6b7d;
+    margin-bottom: 14px;
+    text-align: center;
+    font-weight: 600;
+  }
+  #freq-track-wrap {
+    flex: 1;
+    width: 30px;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    cursor: pointer;
+  }
+  #freq-track {
+    width: 6px; height: 100%;
+    background: linear-gradient(180deg, #e53935 0%, #c62828 100%);
+    border-radius: 3px;
+    box-shadow: 0 0 12px rgba(229,57,53,0.35);
+    pointer-events: none;
+  }
+  #freq-thumb {
+    position: absolute;
+    width: 28px; height: 28px;
+    background: radial-gradient(circle at 35% 35%, #ff6b66, #c62828);
+    border-radius: 50%;
+    box-shadow: 0 3px 10px rgba(198,40,40,0.45), inset 0 1px 2px rgba(255,255,255,0.4);
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    pointer-events: auto;
+  }
+  #freq-thumb:active { cursor: grabbing; }
+
+  #freq-speaker {
+    width: 64px; height: 64px;
+    margin-top: 16px;
+    cursor: pointer;
+    transition: transform 0.08s ease;
+  }
+  #freq-speaker:active { transform: scale(0.92); }
+  #freq-speaker svg { width: 100%; height: 100%; }
+
+  #freq-label {
+    font-size: 14px; font-weight: 600;
+    margin-top: 8px;
+    color: #2a3a4d;
+    font-variant-numeric: tabular-nums;
+  }
+  #freq-sublabel {
+    font-size: 11px; color: #6a7a8a; margin-top: 2px;
+  }
+
+  /* ---------------- Main panel ---------------- */
+  #main-panel {
+    position: relative;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(20,40,80,0.08), 0 1px 2px rgba(20,40,80,0.04);
+    overflow: hidden;
+  }
+  #wave-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+  }
+
+  #title {
+    position: absolute;
+    top: 16px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    text-align: center;
+    pointer-events: none;
+  }
+  #title h1 {
+    font-size: 18px; font-weight: 700; letter-spacing: 0.02em;
+    color: #1f2a36;
+  }
+  #title p {
+    font-size: 12px; color: #5b6b7d; margin-top: 2px;
+  }
+
+  /* Speaker rows */
+  #speakers-layer {
+    position: absolute; inset: 0;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .speaker-row {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+  }
+  .delay-slider {
+    position: relative;
+    height: 36px;
+    cursor: pointer;
+  }
+  .delay-slider .track {
+    position: absolute;
+    top: 50%;
+    left: 0; right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #1f4e79, #2e6cab);
+    border-radius: 3px;
+    transform: translateY(-50%);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .delay-slider .thumb {
+    position: absolute;
+    width: 22px; height: 22px;
+    background: radial-gradient(circle at 35% 35%, #4a82c2, #1f4e79);
+    border-radius: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    box-shadow: 0 2px 6px rgba(31,78,121,0.45), inset 0 1px 2px rgba(255,255,255,0.3);
+  }
+  .delay-slider .thumb:active { cursor: grabbing; }
+  .delay-slider .cursor {
+    position: absolute;
+    width: 3px; height: 26px;
+    background: #ffd54a;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 10px rgba(255,213,74,0.9), 0 0 4px rgba(255,213,74,0.6);
+    opacity: 0;
+    pointer-events: none;
+    border-radius: 1.5px;
+  }
+  .delay-slider.armed .cursor { opacity: 1; }
+  .speaker-icon {
+    margin-left: 10px;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.1s ease;
+    flex-shrink: 0;
+  }
+  .speaker-icon:active { transform: scale(0.9); }
+  .speaker-icon.fired { filter: drop-shadow(0 0 8px rgba(255,213,74,0.9)); }
+  .speaker-icon svg { display: block; width: 100%; height: 100%; }
+
+  /* Mic */
+  #mic {
+    position: absolute;
+    z-index: 4;
+    cursor: grab;
+    transform: translate(-50%, -50%);
+    transition: filter 0.06s ease;
+  }
+  #mic:active { cursor: grabbing; }
+  #mic svg { display: block; width: 100%; height: 100%; }
+
+  /* Play button */
+  #play {
+    position: absolute;
+    top: 18px; right: 18px;
+    width: 64px; height: 64px;
+    border: none;
+    background: #2a9d4a;
+    color: white;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 6;
+    box-shadow: 0 4px 14px rgba(42,157,74,0.4), inset 0 1px 2px rgba(255,255,255,0.2);
+    transition: transform 0.08s ease, background 0.15s ease;
+  }
+  #play:hover { background: #34b358; }
+  #play:active { transform: scale(0.94); }
+  #play svg { width: 26px; height: 26px; fill: white; margin-left: 4px; }
+
+  /* Bottom controls */
+  #controls {
+    position: absolute;
+    bottom: 18px; left: 18px;
+    display: flex;
+    gap: 10px;
+    z-index: 6;
+    align-items: center;
+  }
+  .btn {
+    padding: 11px 22px;
+    border: 2px solid #1f2a36;
+    background: white;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #1f2a36;
+    transition: background 0.12s ease, transform 0.08s ease;
+    font-family: inherit;
+  }
+  .btn:hover { background: #f4f6fa; }
+  .btn:active { transform: scale(0.96); }
+  .btn.primary { background: #1f4e79; color: white; border-color: #1f4e79; }
+  .btn.primary:hover { background: #2e6cab; }
+
+  #count {
+    display: flex; align-items: center; gap: 4px;
+    background: white; border: 2px solid #1f2a36;
+    border-radius: 8px; padding: 4px;
+  }
+  #count button {
+    width: 32px; height: 32px;
+    border: none; background: transparent;
+    font-size: 18px; font-weight: 700;
+    cursor: pointer; border-radius: 5px;
+    color: #1f2a36;
+  }
+  #count button:hover { background: #f0f2f6; }
+  #count span {
+    padding: 0 10px;
+    font-size: 14px; font-weight: 600;
+    min-width: 92px; text-align: center;
+  }
+
+  /* Help text — keep below mic so dragging mic over it stays visible */
+  #help {
+    position: absolute;
+    bottom: 18px; right: 18px;
+    z-index: 2;
+    font-size: 11px;
+    color: #5b6b7d;
+    text-align: right;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Left: frequency control -->
+  <div id="freq-panel">
+    <div id="freq-title">Frequency</div>
+    <div id="freq-track-wrap">
+      <div id="freq-track"></div>
+      <div id="freq-thumb"></div>
+    </div>
+    <div id="freq-speaker" title="Click to play beep"></div>
+    <div id="freq-label">800 Hz</div>
+    <div id="freq-sublabel">drag · click for beep</div>
+  </div>
+
+  <!-- Main: array + wave field -->
+  <div id="main-panel">
+    <canvas id="wave-canvas"></canvas>
+    <div id="title">
+      <h1>Transcranial Focused Ultrasound</h1>
+      <p>Each speaker fires when its time-cursor reaches the blue dot. Try <b>Focus</b> to converge all waves on the microphone.</p>
+    </div>
+    <div id="speakers-layer"></div>
+    <div id="mic"></div>
+    <button id="play" aria-label="Play all">
+      <svg viewBox="0 0 20 20"><polygon points="4,2 18,10 4,18"/></svg>
+    </button>
+    <div id="controls">
+      <button class="btn" id="btn-random">Random</button>
+      <button class="btn primary" id="btn-focus">Focus</button>
+      <div id="count">
+        <button id="btn-minus" aria-label="Fewer speakers">−</button>
+        <span id="count-label">8 speakers</span>
+        <button id="btn-plus" aria-label="More speakers">+</button>
+      </div>
+    </div>
+    <div id="help">
+      red &amp; blue rings = wave peaks &amp; troughs<br>
+      drag the microphone &nbsp;·&nbsp; click any speaker to fire it alone
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ============================================================
+// Constants
+// ============================================================
+const C_VIS    = 480;             // wave speed (pixels per second)
+const T_MAX    = 1.6;             // max delay range on each slider (seconds)
+const SIGMA    = 32;              // wave-packet envelope width (pixels)
+const VIS_WL   = 52;              // visual wavelength in pixels (cosmetic — independent of audio freq)
+const K        = 2 * Math.PI / VIS_WL;
+const PACKET_LIFETIME = 4.0;      // seconds after which a wave packet is gone
+const N_MIN = 2, N_MAX = 16, N_DEFAULT = 8;
+const FREQ_MIN = 220, FREQ_MAX = 1800;
+const FREQ_DEFAULT = 800;
+const SPEAKER_X_FRACTION = 0.22;  // where the speaker column sits across main panel width
+const SLIDER_W_FRACTION  = 0.16;  // slider width as fraction of main panel width
+const BEEP_DURATION = 0.10;       // seconds, per-speaker beep length at mic
+
+// ============================================================
+// SVG icons
+// ============================================================
+const SPEAKER_SVG = `
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sp-cone" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8a9cb0"/>
+      <stop offset="0.5" stop-color="#4a5d72"/>
+      <stop offset="1" stop-color="#28384a"/>
+    </linearGradient>
+    <radialGradient id="sp-dome" cx="0.35" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#aabbcc"/>
+      <stop offset="0.6" stop-color="#5c7088"/>
+      <stop offset="1" stop-color="#22303f"/>
+    </radialGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="6" fill="#1f2a36" />
+  <path d="M 8 22 L 22 22 L 40 8 L 40 56 L 22 42 L 8 42 Z" fill="url(#sp-cone)" stroke="#0e1620" stroke-width="1.5" stroke-linejoin="round"/>
+  <ellipse cx="40" cy="32" rx="8" ry="20" fill="url(#sp-dome)" stroke="#0e1620" stroke-width="1.5"/>
+  <ellipse cx="40" cy="32" rx="4" ry="14" fill="#1a2632"/>
+  <circle cx="40" cy="32" r="2" fill="#3a4a5d"/>
+</svg>`;
+
+const FREQ_SPEAKER_SVG = `
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 8 22 L 22 22 L 40 8 L 40 56 L 22 42 L 8 42 Z" fill="#3a4a5d" stroke="#1f2a36" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M 46 18 Q 56 32 46 46" fill="none" stroke="#1f2a36" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 50 12 Q 64 32 50 52" fill="none" stroke="#1f2a36" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+</svg>`;
+
+const MIC_SVG = `
+<svg viewBox="0 0 64 80" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mic-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b8c2cc"/>
+      <stop offset="0.5" stop-color="#7a8896"/>
+      <stop offset="1" stop-color="#3a4a5d"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="6" width="24" height="42" rx="12" fill="url(#mic-grad)" stroke="#1f2a36" stroke-width="2"/>
+  <line x1="24" y1="16" x2="40" y2="16" stroke="#1f2a36" stroke-width="1" opacity="0.5"/>
+  <line x1="24" y1="22" x2="40" y2="22" stroke="#1f2a36" stroke-width="1" opacity="0.5"/>
+  <line x1="24" y1="28" x2="40" y2="28" stroke="#1f2a36" stroke-width="1" opacity="0.5"/>
+  <line x1="24" y1="34" x2="40" y2="34" stroke="#1f2a36" stroke-width="1" opacity="0.5"/>
+  <path d="M 10 38 Q 10 56 32 56 Q 54 56 54 38" fill="none" stroke="#1f2a36" stroke-width="3" stroke-linecap="round"/>
+  <line x1="32" y1="56" x2="32" y2="70" stroke="#1f2a36" stroke-width="3"/>
+  <line x1="20" y1="72" x2="44" y2="72" stroke="#1f2a36" stroke-width="3" stroke-linecap="round"/>
+</svg>`;
+
+// ============================================================
+// State
+// ============================================================
+const state = {
+  freq: FREQ_DEFAULT,
+  n: N_DEFAULT,
+  speakers: [],         // { x, y, delay, cursorStart, fireStart, armed, row, sliderEl, thumbEl, cursorEl, iconEl }
+  mic: { x: 800, y: 400 },
+  dragging: null,       // 'freq' | 'mic' | { type:'delay', idx, slider }
+  freqThumbPos: 0,      // 0..1, 0=bottom (low), 1=top (high)
+  simTime: 0,
+  layout: null,         // computed each resize
+};
+
+// ============================================================
+// Audio
+// ============================================================
+let audioCtx = null;
+let masterGain = null, compressor = null;
+let toneOsc = null, toneGain = null;
+
+function ensureAudio() {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return;
+  }
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new Ctx();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.6;
+  compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.value = -12;
+  compressor.knee.value = 8;
+  compressor.ratio.value = 4;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.08;
+  masterGain.connect(compressor);
+  compressor.connect(audioCtx.destination);
+}
+
+function startTone() {
+  ensureAudio();
+  if (toneOsc) return;
+  toneOsc = audioCtx.createOscillator();
+  toneGain = audioCtx.createGain();
+  toneOsc.type = 'sine';
+  toneOsc.frequency.value = state.freq;
+  const now = audioCtx.currentTime;
+  toneGain.gain.setValueAtTime(0, now);
+  toneGain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+  toneOsc.connect(toneGain);
+  toneGain.connect(masterGain);
+  toneOsc.start();
+}
+
+function updateToneFreq() {
+  if (!toneOsc) return;
+  toneOsc.frequency.setTargetAtTime(state.freq, audioCtx.currentTime, 0.01);
+}
+
+function stopTone() {
+  if (!toneOsc) return;
+  const now = audioCtx.currentTime;
+  const g = toneGain;
+  const o = toneOsc;
+  g.gain.cancelScheduledValues(now);
+  g.gain.setValueAtTime(g.gain.value, now);
+  g.gain.linearRampToValueAtTime(0, now + 0.06);
+  o.stop(now + 0.1);
+  toneOsc = null; toneGain = null;
+}
+
+function playBeep(whenFromNow, amplitude, freq, duration = BEEP_DURATION) {
+  ensureAudio();
+  const t0 = audioCtx.currentTime + Math.max(0, whenFromNow);
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  // Cosine-tapered envelope: attack, hold, decay
+  const attack = Math.min(0.008, duration * 0.15);
+  const release = duration - attack;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(amplitude, t0 + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + release);
+  osc.connect(g);
+  g.connect(masterGain);
+  osc.start(t0);
+  osc.stop(t0 + duration + 0.05);
+}
+
+// ============================================================
+// Layout
+// ============================================================
+function computeLayout() {
+  const main = document.getElementById('main-panel');
+  const r = main.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  const topPad = 70;
+  const botPad = 90;
+  const usable = h - topPad - botPad;
+  const n = state.n;
+  const iconSize = Math.max(28, Math.min(54, usable / n - 6));
+  const speakerX = w * SPEAKER_X_FRACTION;          // x of icon center (where wave emits)
+  const sliderW  = w * SLIDER_W_FRACTION;
+  // Slider sits to the left of the icon; account for icon half-width + 10px margin
+  const sliderLeft = speakerX - iconSize/2 - 10 - sliderW;
+  return {
+    w, h,
+    speakerX, sliderW, sliderLeft,
+    topPad, botPad, usable,
+    iconSize,
+    rowHeight: usable / n,
+    yFor: (i) => topPad + usable * (n === 1 ? 0.5 : (i + 0.5) / n),
+  };
+}
+
+// ============================================================
+// Build / rebuild speaker rows
+// ============================================================
+function rebuildSpeakers() {
+  const layer = document.getElementById('speakers-layer');
+  layer.innerHTML = '';
+  state.speakers = [];
+  state.layout = computeLayout();
+  const L = state.layout;
+
+  for (let i = 0; i < state.n; i++) {
+    const y = L.yFor(i);
+
+    const row = document.createElement('div');
+    row.className = 'speaker-row';
+    row.style.left = `${L.sliderLeft}px`;
+    row.style.top  = `${y - L.iconSize/2}px`;
+    row.style.height = `${L.iconSize}px`;
+
+    const slider = document.createElement('div');
+    slider.className = 'delay-slider';
+    slider.style.width = `${L.sliderW}px`;
+    slider.style.height = `${L.iconSize}px`;
+    slider.innerHTML = `
+      <div class="track"></div>
+      <div class="cursor"></div>
+      <div class="thumb"></div>
+    `;
+
+    const icon = document.createElement('div');
+    icon.className = 'speaker-icon';
+    icon.style.width = `${L.iconSize}px`;
+    icon.style.height = `${L.iconSize}px`;
+    icon.innerHTML = SPEAKER_SVG;
+
+    row.appendChild(slider);
+    row.appendChild(icon);
+    layer.appendChild(row);
+
+    const sp = {
+      x: L.speakerX,                  // L.speakerX is the icon center x; wave emits from there
+      y,
+      delay: 0,
+      cursorStart: -Infinity,
+      fireStart: -Infinity,
+      armed: false,
+      row,
+      sliderEl: slider,
+      thumbEl: slider.querySelector('.thumb'),
+      cursorEl: slider.querySelector('.cursor'),
+      iconEl: icon,
+      idx: i,
+    };
+    state.speakers.push(sp);
+
+    // Set thumb position
+    updateThumbPosition(sp);
+
+    // Wire interactions
+    wireSpeakerRow(sp);
+  }
+
+  document.getElementById('count-label').textContent = `${state.n} speaker${state.n>1?'s':''}`;
+}
+
+function updateThumbPosition(sp) {
+  const L = state.layout;
+  const frac = sp.delay / T_MAX;
+  sp.thumbEl.style.left = `${frac * L.sliderW}px`;
+}
+
+function wireSpeakerRow(sp) {
+  // Drag thumb / click track sets delay
+  const onDown = (e) => {
+    e.preventDefault();
+    ensureAudio();
+    state.dragging = { type: 'delay', sp };
+    moveDelayFromEvent(e, sp);
+    sp.sliderEl.setPointerCapture(e.pointerId);
+  };
+  sp.sliderEl.addEventListener('pointerdown', onDown);
+  sp.sliderEl.addEventListener('pointermove', (e) => {
+    if (state.dragging && state.dragging.type === 'delay' && state.dragging.sp === sp) {
+      moveDelayFromEvent(e, sp);
+    }
+  });
+  sp.sliderEl.addEventListener('pointerup', (e) => {
+    if (state.dragging && state.dragging.type === 'delay') state.dragging = null;
+    try { sp.sliderEl.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+  sp.sliderEl.addEventListener('pointercancel', () => state.dragging = null);
+
+  // Click speaker icon → fire just this one
+  sp.iconEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ensureAudio();
+    fireSpeaker(sp);
+  });
+}
+
+function moveDelayFromEvent(e, sp) {
+  const rect = sp.sliderEl.getBoundingClientRect();
+  let frac = (e.clientX - rect.left) / rect.width;
+  frac = Math.max(0, Math.min(1, frac));
+  sp.delay = frac * T_MAX;
+  updateThumbPosition(sp);
+}
+
+// ============================================================
+// Firing speakers
+// ============================================================
+function fireSpeaker(sp) {
+  // The cursor begins sweeping from t=0 now. When it reaches the dot, the wave packet emits.
+  sp.cursorStart = state.simTime;
+  sp.armed = true;
+  sp.sliderEl.classList.add('armed');
+}
+
+function fireAll() {
+  ensureAudio();
+  for (const sp of state.speakers) fireSpeaker(sp);
+}
+
+function applyRandomDelays() {
+  for (const sp of state.speakers) {
+    sp.delay = Math.random() * T_MAX;
+    updateThumbPosition(sp);
+  }
+}
+
+function applyFocusDelays() {
+  // delay_i = (d_max - d_i) / C_VIS, where d_i is speaker-to-mic distance
+  const dists = state.speakers.map(sp => Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y));
+  const dmax = Math.max(...dists);
+  state.speakers.forEach((sp, i) => {
+    const d = dists[i];
+    let delay = (dmax - d) / C_VIS;
+    delay = Math.max(0, Math.min(T_MAX, delay));
+    sp.delay = delay;
+    updateThumbPosition(sp);
+  });
+}
+
+// ============================================================
+// Per-frame animation tick
+// ============================================================
+let lastFrame = performance.now();
+
+function tick(now) {
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  state.simTime += dt;
+
+  // For each speaker: animate cursor; check if cursor crossed dot → fire wave packet
+  for (const sp of state.speakers) {
+    const sweepT = state.simTime - sp.cursorStart;   // time since cursor began
+    const L = state.layout;
+    if (sp.cursorStart === -Infinity || sweepT < 0) {
+      // not armed yet, ensure invisible
+      sp.sliderEl.classList.remove('armed');
+    } else if (sweepT > T_MAX + 0.2) {
+      // sweep finished
+      sp.sliderEl.classList.remove('armed');
+      sp.cursorStart = -Infinity;
+    } else {
+      sp.sliderEl.classList.add('armed');
+      const frac = Math.min(1, sweepT / T_MAX);
+      sp.cursorEl.style.left = `${frac * L.sliderW}px`;
+      // Has it crossed the dot?
+      if (sp.armed && sweepT >= sp.delay) {
+        sp.armed = false;
+        sp.fireStart = sp.cursorStart + sp.delay;
+        sp.iconEl.classList.add('fired');
+        setTimeout(() => sp.iconEl.classList.remove('fired'), 220);
+        // Schedule beep at mic with travel-time delay
+        const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
+        const travelTime = d / C_VIS;
+        const amp = 0.55 / Math.sqrt(d / 220 + 1);
+        playBeep(travelTime, amp, state.freq);
+      }
+    }
+  }
+
+  // Render wave field
+  renderWaveField();
+
+  // Mic glow based on field intensity
+  updateMicGlow();
+
+  requestAnimationFrame(tick);
+}
+
+// ============================================================
+// Mic glow (sample field on CPU, same equation as shader)
+// ============================================================
+function fieldAtPoint(px, py, t) {
+  let f = 0;
+  for (const sp of state.speakers) {
+    if (sp.fireStart === -Infinity) continue;
+    const dt = t - sp.fireStart;
+    if (dt < 0 || dt > PACKET_LIFETIME) continue;
+    const dx = sp.x - px, dy = sp.y - py;
+    const r = Math.sqrt(dx*dx + dy*dy);
+    const wr = C_VIS * dt;
+    const arg = r - wr;
+    const env = Math.exp(-arg*arg / (2 * SIGMA * SIGMA));
+    f += env * Math.cos(K * arg) / Math.sqrt(r + 50);
+  }
+  return f;
+}
+
+const micEl = () => document.getElementById('mic');
+function updateMicGlow() {
+  const f = fieldAtPoint(state.mic.x, state.mic.y, state.simTime);
+  const intensity = Math.min(1, Math.abs(f) * 50);
+  const el = micEl();
+  if (intensity > 0.05) {
+    const glow = 6 + intensity * 24;
+    el.style.filter = `drop-shadow(0 0 ${glow}px rgba(255, 200, 60, ${0.4 + intensity * 0.6})) brightness(${1 + intensity*0.4})`;
+  } else {
+    el.style.filter = '';
+  }
+}
+
+// ============================================================
+// WebGL wave-field renderer
+// ============================================================
+let gl, program, posBuf, uniforms, canvas;
+
+const VS = `#version 300 es
+in vec2 a_pos;
+void main() {
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+const FS = `#version 300 es
+precision highp float;
+out vec4 outColor;
+uniform vec2 uResolution;   // physical pixels (matches gl_FragCoord)
+uniform float uDpr;
+uniform float uTime;
+uniform int uN;
+uniform vec2 uPos[16];
+uniform float uStart[16];
+uniform float uActive[16];
+uniform float uC;
+uniform float uSigma;
+uniform float uK;
+uniform float uLifetime;
+void main() {
+  // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
+  vec2 p = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y) / uDpr;
+  float field = 0.0;
+  for (int i = 0; i < 16; i++) {
+    if (i >= uN) break;
+    if (uActive[i] < 0.5) continue;
+    float dt = uTime - uStart[i];
+    if (dt < 0.0 || dt > uLifetime) continue;
+    vec2 d = p - uPos[i];
+    float r = length(d);
+    float wr = uC * dt;
+    float arg = r - wr;
+    float env = exp(-arg*arg / (2.0 * uSigma * uSigma));
+    float osc = cos(uK * arg);
+    field += env * osc / sqrt(r + 50.0);
+  }
+  // Tonemap to color
+  float v = clamp(field * 7.0, -1.0, 1.0);
+  vec3 base = vec3(1.0);
+  vec3 hot  = vec3(0.92, 0.18, 0.18);
+  vec3 cold = vec3(0.16, 0.36, 0.86);
+  vec3 col;
+  if (v > 0.0) col = mix(base, hot, v);
+  else         col = mix(base, cold, -v);
+  outColor = vec4(col, 1.0);
+}`;
+
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader compile error:', gl.getShaderInfoLog(s), '\n', src);
+    throw new Error('Shader failed to compile');
+  }
+  return s;
+}
+
+function initGL() {
+  canvas = document.getElementById('wave-canvas');
+  gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
+  if (!gl) {
+    alert("WebGL2 is required. Please use a modern browser (Chrome / Safari / Firefox).");
+    return;
+  }
+  const vs = compileShader(gl.VERTEX_SHADER, VS);
+  const fs = compileShader(gl.FRAGMENT_SHADER, FS);
+  program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.error('Link error:', gl.getProgramInfoLog(program));
+  }
+  gl.useProgram(program);
+
+  posBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -1,-1,  1,-1,  -1, 1,
+    -1, 1,  1,-1,   1, 1,
+  ]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(program, 'a_pos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  uniforms = {
+    uResolution: gl.getUniformLocation(program, 'uResolution'),
+    uDpr:        gl.getUniformLocation(program, 'uDpr'),
+    uTime:       gl.getUniformLocation(program, 'uTime'),
+    uN:          gl.getUniformLocation(program, 'uN'),
+    uPos:        gl.getUniformLocation(program, 'uPos'),
+    uStart:      gl.getUniformLocation(program, 'uStart'),
+    uActive:     gl.getUniformLocation(program, 'uActive'),
+    uC:          gl.getUniformLocation(program, 'uC'),
+    uSigma:      gl.getUniformLocation(program, 'uSigma'),
+    uK:          gl.getUniformLocation(program, 'uK'),
+    uLifetime:   gl.getUniformLocation(program, 'uLifetime'),
+  };
+
+  gl.uniform1f(uniforms.uC, C_VIS);
+  gl.uniform1f(uniforms.uSigma, SIGMA);
+  gl.uniform1f(uniforms.uK, K);
+  gl.uniform1f(uniforms.uLifetime, PACKET_LIFETIME);
+
+  resizeGL();
+}
+
+function resizeGL() {
+  if (!canvas) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = canvas.getBoundingClientRect();
+  const W = Math.round(r.width * dpr);
+  const H = Math.round(r.height * dpr);
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width = W; canvas.height = H;
+  }
+  gl.viewport(0, 0, W, H);
+}
+
+function renderWaveField() {
+  if (!gl) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Pass PHYSICAL pixel resolution (matches gl_FragCoord); shader divides by uDpr → logical
+  gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
+  gl.uniform1f(uniforms.uDpr, dpr);
+  gl.uniform1f(uniforms.uTime, state.simTime);
+
+  const N = state.speakers.length;
+  gl.uniform1i(uniforms.uN, N);
+
+  const posArr = new Float32Array(N_MAX * 2);
+  const startArr = new Float32Array(N_MAX);
+  const activeArr = new Float32Array(N_MAX);
+  for (let i = 0; i < N; i++) {
+    const sp = state.speakers[i];
+    posArr[2*i + 0] = sp.x;
+    posArr[2*i + 1] = sp.y;
+    const dt = state.simTime - sp.fireStart;
+    if (sp.fireStart !== -Infinity && dt >= 0 && dt <= PACKET_LIFETIME) {
+      startArr[i] = sp.fireStart;
+      activeArr[i] = 1.0;
+    } else {
+      startArr[i] = 0;
+      activeArr[i] = 0.0;
+    }
+  }
+  gl.uniform2fv(uniforms.uPos, posArr);
+  gl.uniform1fv(uniforms.uStart, startArr);
+  gl.uniform1fv(uniforms.uActive, activeArr);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+// ============================================================
+// Mic dragging
+// ============================================================
+function setMicPosition(x, y) {
+  const L = state.layout;
+  // Clamp to main panel
+  state.mic.x = Math.max(L.speakerX + L.iconSize, Math.min(L.w - 10, x));
+  state.mic.y = Math.max(10, Math.min(L.h - 10, y));
+  const el = micEl();
+  el.style.left = `${state.mic.x}px`;
+  el.style.top  = `${state.mic.y}px`;
+}
+
+function initMic() {
+  const el = micEl();
+  el.innerHTML = MIC_SVG;
+  // Size proportional to viewport
+  const size = Math.max(44, Math.min(64, state.layout.h * 0.08));
+  el.style.width = `${size}px`;
+  el.style.height = `${size * 1.25}px`;
+  setMicPosition(state.layout.w * 0.7, state.layout.h * 0.5);
+
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    state.dragging = 'mic';
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (state.dragging !== 'mic') return;
+    const mainRect = document.getElementById('main-panel').getBoundingClientRect();
+    setMicPosition(e.clientX - mainRect.left, e.clientY - mainRect.top);
+  });
+  el.addEventListener('pointerup', (e) => {
+    if (state.dragging === 'mic') state.dragging = null;
+    try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+  el.addEventListener('pointercancel', () => state.dragging = null);
+}
+
+// ============================================================
+// Frequency slider
+// ============================================================
+function freqFromFrac(frac) {
+  // Logarithmic mapping; frac=1 → top of track = high freq; frac=0 → bottom = low freq
+  const lo = Math.log(FREQ_MIN), hi = Math.log(FREQ_MAX);
+  return Math.exp(lo + frac * (hi - lo));
+}
+function fracFromFreq(f) {
+  const lo = Math.log(FREQ_MIN), hi = Math.log(FREQ_MAX);
+  return (Math.log(f) - lo) / (hi - lo);
+}
+
+function updateFreqLabel() {
+  document.getElementById('freq-label').textContent = `${Math.round(state.freq)} Hz`;
+}
+function updateFreqThumb() {
+  const wrap = document.getElementById('freq-track-wrap');
+  const r = wrap.getBoundingClientRect();
+  const thumb = document.getElementById('freq-thumb');
+  // thumb top = frac from BOTTOM
+  const frac = state.freqThumbPos;
+  // We want frac=1 to appear at the TOP of the track. Position with CSS top from container.
+  // Container is flex with track in middle; we use absolute positioning relative to wrap.
+  thumb.style.top = `${(1 - frac) * 100}%`;
+}
+
+function initFreqSlider() {
+  const wrap = document.getElementById('freq-track-wrap');
+  state.freqThumbPos = fracFromFreq(state.freq);
+  updateFreqLabel();
+  updateFreqThumb();
+
+  const updateFromEvent = (e) => {
+    const r = wrap.getBoundingClientRect();
+    let frac = 1 - (e.clientY - r.top) / r.height;
+    frac = Math.max(0, Math.min(1, frac));
+    state.freqThumbPos = frac;
+    state.freq = freqFromFrac(frac);
+    updateFreqLabel();
+    updateFreqThumb();
+    updateToneFreq();
+  };
+
+  wrap.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    state.dragging = 'freq';
+    startTone();
+    updateFromEvent(e);
+    wrap.setPointerCapture(e.pointerId);
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (state.dragging !== 'freq') return;
+    updateFromEvent(e);
+  });
+  const release = (e) => {
+    if (state.dragging === 'freq') {
+      state.dragging = null;
+      stopTone();
+      try { wrap.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  };
+  wrap.addEventListener('pointerup', release);
+  wrap.addEventListener('pointercancel', release);
+
+  // Click the speaker icon → play a beep at current freq
+  const speakerEl = document.getElementById('freq-speaker');
+  speakerEl.innerHTML = FREQ_SPEAKER_SVG;
+  speakerEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    playBeep(0, 0.4, state.freq, 0.25);
+  });
+}
+
+// ============================================================
+// Top-level buttons
+// ============================================================
+function initButtons() {
+  document.getElementById('play').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    fireAll();
+  });
+  document.getElementById('btn-random').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    applyRandomDelays();
+  });
+  document.getElementById('btn-focus').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    applyFocusDelays();
+  });
+  document.getElementById('btn-plus').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (state.n < N_MAX) { state.n++; rebuildSpeakers(); }
+  });
+  document.getElementById('btn-minus').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (state.n > N_MIN) { state.n--; rebuildSpeakers(); }
+  });
+}
+
+// ============================================================
+// Resize handling
+// ============================================================
+function onResize() {
+  state.layout = computeLayout();
+  // Update speaker positions and slider widths in place
+  for (let i = 0; i < state.speakers.length; i++) {
+    const sp = state.speakers[i];
+    const y = state.layout.yFor(i);
+    sp.x = state.layout.speakerX;
+    sp.y = y;
+    sp.row.style.left = `${state.layout.sliderLeft}px`;
+    sp.row.style.top  = `${y - state.layout.iconSize/2}px`;
+    sp.row.style.height = `${state.layout.iconSize}px`;
+    sp.sliderEl.style.width = `${state.layout.sliderW}px`;
+    sp.sliderEl.style.height = `${state.layout.iconSize}px`;
+    sp.iconEl.style.width = `${state.layout.iconSize}px`;
+    sp.iconEl.style.height = `${state.layout.iconSize}px`;
+    updateThumbPosition(sp);
+  }
+  // Clamp mic
+  setMicPosition(state.mic.x, state.mic.y);
+  resizeGL();
+  updateFreqThumb();
+}
+
+// ============================================================
+// Boot
+// ============================================================
+window.addEventListener('load', () => {
+  initGL();
+  rebuildSpeakers();
+  initMic();
+  initFreqSlider();
+  initButtons();
+  window.addEventListener('resize', onResize);
+  requestAnimationFrame((t) => { lastFrame = t; requestAnimationFrame(tick); });
+});
+
+// Prevent scroll/zoom on touch devices
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+</script>
+</body>
+</html>
