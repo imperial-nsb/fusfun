@@ -70,10 +70,22 @@ html, body {
   width: 64px; height: 64px;
   margin-top: 16px;
   cursor: pointer;
-  transition: transform 0.08s ease;
+  transition: transform 0.12s cubic-bezier(.34, 1.6, .64, 1), filter 0.1s ease;
 }
 #freq-speaker:active { transform: scale(0.92); }
-#freq-speaker img { width: 100%; height: 100%; display: block; }
+#freq-speaker img { width: 100%; height: 100%; display: block; pointer-events: none; }
+#freq-speaker.fired {
+  transform: scale(1.18);
+  filter: drop-shadow(0 0 10px rgba(255, 213, 74, 0.95));
+}
+#freq-speaker.tone-active {
+  animation: freq-pulse 0.55s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(229, 57, 53, 0.7));
+}
+@keyframes freq-pulse {
+  0%, 100% { transform: scale(1.0); }
+  50%      { transform: scale(1.10); }
+}
 
 #freq-label {
   font-size: 14px; font-weight: 600;

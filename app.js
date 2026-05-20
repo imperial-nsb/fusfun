@@ -81,6 +81,7 @@ function startTone() {
   toneOsc.connect(toneGain);
   toneGain.connect(masterGain);
   toneOsc.start();
+  document.getElementById('freq-speaker').classList.add('tone-active');
 }
 
 function updateToneFreq() {
@@ -97,6 +98,7 @@ function stopTone() {
   g.gain.linearRampToValueAtTime(0, now + 0.06);
   o.stop(now + 0.1);
   toneOsc = null; toneGain = null;
+  document.getElementById('freq-speaker').classList.remove('tone-active');
 }
 
 function playBeep(whenFromNow, amplitude, freq, duration = BEEP_DURATION) {
@@ -645,10 +647,13 @@ function initFreqSlider() {
   wrap.addEventListener('pointercancel', release);
 
   // Click the speaker icon → play a beep at current freq
-  document.getElementById('freq-speaker').addEventListener('pointerdown', (e) => {
+  const freqSpeakerEl = document.getElementById('freq-speaker');
+  freqSpeakerEl.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     ensureAudio();
     playBeep(0, 0.4, state.freq, 0.25);
+    freqSpeakerEl.classList.add('fired');
+    setTimeout(() => freqSpeakerEl.classList.remove('fired'), 320);
   });
 }
 
