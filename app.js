@@ -136,16 +136,20 @@ function computeLayout() {
   const sliderLeft = speakerX - iconSize/2 - 10 - sliderW;
   const yFor = (i) => topPad + usable * (n === 1 ? 0.5 : (i + 0.5) / n);
 
-  // tMax = max focus delay needed when the mic is at its closest allowed
-  // position. The mic is clamped to x ≥ speakerX + iconSize, so the worst
-  // case is mic centered there. This sizes the slider so Focus exactly
-  // spans it at the closest position.
-  const minMicX = speakerX + iconSize;
-  const micY = topPad + usable / 2;
+  // tMax sets how long the cursor takes to traverse the slider.
+  // To keep that sweep speed constant across N (so the demo's tempo doesn't
+  // change when the user adds/removes speakers) we size it against the
+  // *worst-case* configuration: N_MAX (smallest icons → mic can be closest →
+  // widest spread). Focus will exactly fill the slider only at N_MAX; at
+  // smaller N it uses a proportional fraction — acceptable trade.
+  const refN = N_MAX;
+  const refIconSize = Math.max(32, Math.min(68, usable / refN - 4));
+  const refMinMicX = speakerX + refIconSize;
+  const refMicY = topPad + usable / 2;
   let dMin = Infinity, dMax = 0;
-  for (let i = 0; i < n; i++) {
-    const sy = yFor(i);
-    const d = Math.hypot(minMicX - speakerX, sy - micY);
+  for (let i = 0; i < refN; i++) {
+    const sy = topPad + usable * (i + 0.5) / refN;
+    const d = Math.hypot(refMinMicX - speakerX, sy - refMicY);
     if (d < dMin) dMin = d;
     if (d > dMax) dMax = d;
   }
