@@ -195,9 +195,9 @@ function rebuildSpeakers() {
     icon.style.width = `${L.iconSize}px`;
     icon.style.height = `${L.iconSize}px`;
     const iconImg = document.createElement('img');
-    iconImg.src = window.FUSFUN_CONFIG.icons.speaker;
     iconImg.alt = '';
     iconImg.draggable = false;
+    applyIconToImg(iconImg, (window.FUSFUN_CONFIG.icons || {}).speaker);
     icon.appendChild(iconImg);
 
     row.appendChild(slider);
@@ -563,9 +563,28 @@ function setMicPosition(x, y) {
 
 function initMic() {
   const el = micEl();
-  const size = Math.max(44, Math.min(64, state.layout.h * 0.08));
-  el.style.width = `${size}px`;
-  el.style.height = `${size * 1.25}px`;
+  const img = el.querySelector('img');
+  const baseDim = Math.max(44, Math.min(72, state.layout.h * 0.08));
+
+  // Size the mic wrapper to match the image's natural aspect ratio AFTER
+  // rotation, so the icon isn't squished. Re-run whenever the image (re)loads.
+  const resize = () => {
+    const nw = img.naturalWidth || 1;
+    const nh = img.naturalHeight || 1;
+    const rot = parseFloat(img.dataset.rotate) || 0;
+    const rad = rot * Math.PI / 180;
+    const cos = Math.abs(Math.cos(rad));
+    const sin = Math.abs(Math.sin(rad));
+    const effW = nw * cos + nh * sin;
+    const effH = nh * cos + nw * sin;
+    const maxDim = Math.max(effW, effH);
+    el.style.width  = `${baseDim * effW / maxDim}px`;
+    el.style.height = `${baseDim * effH / maxDim}px`;
+    setMicPosition(state.mic.x, state.mic.y);   // re-clamp under new size
+  };
+  if (img.complete && img.naturalWidth) resize();
+  else img.addEventListener('load', resize);
+
   setMicPosition(state.layout.w * 0.7, state.layout.h * 0.5);
 
   el.addEventListener('pointerdown', (e) => {
@@ -721,11 +740,33 @@ function onResize() {
 // ============================================================
 // Boot
 // ============================================================
+// Resolve a config icon entry into { src, rotate }. Accepts either a plain
+// string ('assets/x.png') or an object ({ src, rotate }).
+function resolveIcon(entry) {
+  if (!entry) return { src: '', rotate: 0 };
+  if (typeof entry === 'string') return { src: entry, rotate: 0 };
+  return { src: entry.src || '', rotate: entry.rotate || 0 };
+}
+
+// Apply src + rotation to an <img>. Uses object-fit: contain so the image
+// never stretches. Wraps rotation with a scale-to-fit factor so a square
+// wrapper still contains the rotated content (e.g. 45° → scale 1/√2).
+function applyIconToImg(imgEl, entry) {
+  const { src, rotate } = resolveIcon(entry);
+  const rad = rotate * Math.PI / 180;
+  const fit = 1 / (Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad)));
+  imgEl.style.objectFit = 'contain';
+  imgEl.style.transformOrigin = 'center center';
+  imgEl.style.transform = `rotate(${rotate}deg) scale(${fit})`;
+  imgEl.dataset.rotate = String(rotate);
+  imgEl.src = src;
+}
+
 function applyIconConfig() {
   const cfg = (window.FUSFUN_CONFIG && window.FUSFUN_CONFIG.icons) || {};
   for (const img of document.querySelectorAll('img[data-icon]')) {
     const key = img.dataset.icon;
-    if (cfg[key]) img.src = cfg[key];
+    if (cfg[key]) applyIconToImg(img, cfg[key]);
   }
 }
 

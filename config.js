@@ -5,12 +5,16 @@
 // Paths are relative to index.html. Any image format <img> accepts
 // works: .svg, .png, .jpg, .webp, .gif, .avif. Transparent backgrounds
 // recommended so the wave field shows through.
+//
+// Each icon entry is either:
+//   - a plain string path, e.g. 'assets/speaker.svg'
+//   - an object { src, rotate } where rotate is degrees clockwise.
 // ============================================================
 window.FUSFUN_CONFIG = {
   icons: {
-    speaker:     'assets/speaker.svg',       // array elements (each row)
-    freqSpeaker: 'assets/freq-speaker.svg',  // preview speaker beside the freq slider
-    microphone:  'assets/microphone.svg',
-    play:        'assets/play.svg',
+    speaker:     { src: 'assets/speaker.png', rotate: 45 },   // array elements
+    freqSpeaker: { src: 'assets/speaker.png', rotate: 45 },   // preview by the freq slider
+    microphone:  { src: 'assets/microphone.png', rotate: -90 },
+    play:        { src: 'assets/play.svg' },
   },
 };
