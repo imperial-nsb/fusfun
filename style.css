@@ -183,15 +183,22 @@ html, body {
 .delay-slider .cursor {
   position: absolute;
   width: 3px; height: 26px;
-  background: #ffd54a;
+  background: #34d05a;
   top: 50%;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 10px rgba(255, 213, 74, 0.9), 0 0 4px rgba(255, 213, 74, 0.6);
+  box-shadow: 0 0 10px rgba(52, 208, 90, 0.9), 0 0 4px rgba(52, 208, 90, 0.6);
   opacity: 0;
   pointer-events: none;
   border-radius: 1.5px;
 }
 .delay-slider.armed .cursor { opacity: 1; }
+.delay-slider .thumb {
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.delay-slider .thumb.fired {
+  background: radial-gradient(circle at 35% 35%, #6fe49e, #1d7a3a);
+  box-shadow: 0 0 12px rgba(52, 208, 90, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.3);
+}
 .speaker-icon {
   margin-left: 10px;
   cursor: pointer;
