@@ -27,10 +27,10 @@
   <div id="main-panel">
     <canvas id="wave-canvas"></canvas>
 
-    <div id="title">
-      <h1>Focused Ultrasound Visualised</h1>
-      <p>Each speaker fires when its time-cursor reaches the blue dot.
-         Try <b>Focus</b> to converge all waves on the microphone.</p>
+    <div id="count">
+      <button id="btn-minus" aria-label="Fewer speakers">−</button>
+      <span id="count-label">8 speakers</span>
+      <button id="btn-plus" aria-label="More speakers">+</button>
     </div>
 
     <div id="speakers-layer"></div>
@@ -47,17 +47,9 @@
     <div id="controls">
       <button class="btn" id="btn-random">Random</button>
       <button class="btn primary" id="btn-focus">Focus</button>
-      <div id="count">
-        <button id="btn-minus" aria-label="Fewer speakers">−</button>
-        <span id="count-label">8 speakers</span>
-        <button id="btn-plus" aria-label="More speakers">+</button>
-      </div>
     </div>
 
-    <div id="help">
-      red &amp; blue rings = wave peaks &amp; troughs<br>
-      drag the microphone &nbsp;·&nbsp; click any speaker to fire it alone
-    </div>
+    <div id="brand">FUS FUN</div>
   </div>
 </div>
 

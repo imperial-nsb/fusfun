@@ -19,7 +19,7 @@ function wavelengthForFreq(f) { return VIS_WL_REF_PX * VIS_WL_REF_FREQ / f; }
 function kForFreq(f) { return 2 * Math.PI / wavelengthForFreq(f); }
 const PACKET_LIFETIME = 4.0;      // seconds before a wave packet is dropped from the field
 const N_MIN = 2, N_MAX = 16, N_DEFAULT = 8;
-const FREQ_MIN = 220, FREQ_MAX = 1800;
+const FREQ_MIN = 220, FREQ_MAX = 2500;
 const FREQ_DEFAULT = 800;
 const SPEAKER_X_FRACTION = 0.22;  // where the speaker column sits across main panel width
 const SLIDER_W_FRACTION  = 0.16;  // slider width as fraction of main panel width
