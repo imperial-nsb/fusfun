@@ -130,7 +130,7 @@ function computeLayout() {
   const botPad = 90;
   const usable = h - topPad - botPad;
   const n = state.n;
-  const iconSize = Math.max(28, Math.min(54, usable / n - 6));
+  const iconSize = Math.max(32, Math.min(68, usable / n - 4));
   const speakerX = w * SPEAKER_X_FRACTION;          // x of icon center (where wave emits)
   const sliderW  = w * SLIDER_W_FRACTION;
   const sliderLeft = speakerX - iconSize/2 - 10 - sliderW;
@@ -564,7 +564,7 @@ function setMicPosition(x, y) {
 function initMic() {
   const el = micEl();
   const img = el.querySelector('img');
-  const baseDim = Math.max(44, Math.min(72, state.layout.h * 0.08));
+  const baseDim = Math.max(36, Math.min(56, state.layout.h * 0.065));
 
   // Size the mic wrapper to match the image's natural aspect ratio AFTER
   // rotation, so the icon isn't squished. Re-run whenever the image (re)loads.
