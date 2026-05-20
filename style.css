@@ -128,7 +128,8 @@ html, body {
   z-index: 2;             /* below the mic so dragging mic over it stays visible */
   text-align: right;
   pointer-events: none;
-  color: #1f2a36;
+  color: #f4f0e6;         /* light on dark inferno background */
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 #brand .logo {
   font-size: 22px;
@@ -137,7 +138,7 @@ html, body {
 }
 #brand .info {
   font-size: 11px;
-  color: #5b6b7d;
+  color: #d0c9bd;
   line-height: 1.4;
   margin-top: 4px;
 }
@@ -245,7 +246,8 @@ html, body {
   text-align: center;
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: #5b6b7d;
+  color: #d0c9bd;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
   z-index: 6;
   pointer-events: none;
   font-variant: small-caps;
