@@ -282,6 +282,9 @@ function fireSpeaker(sp) {
 function fireAll() {
   ensureAudio();
   for (const sp of state.speakers) fireSpeaker(sp);
+  const playBtn = document.getElementById('play');
+  playBtn.classList.add('fired');
+  setTimeout(() => playBtn.classList.remove('fired'), 220);
 }
 
 function applyRandomDelays() {
@@ -621,13 +624,21 @@ function fracFromFreq(f) {
   return (Math.log(f) - lo) / (hi - lo);
 }
 
+const FREQ_THUMB_PX = 28;   // matches CSS #freq-thumb width/height
+
 function updateFreqLabel() {
   document.getElementById('freq-label').textContent = `${Math.round(state.freq)} Hz`;
 }
 function updateFreqThumb() {
+  const wrap = document.getElementById('freq-track-wrap');
   const thumb = document.getElementById('freq-thumb');
-  const frac = state.freqThumbPos;
-  thumb.style.top = `${(1 - frac) * 100}%`;
+  const wrapH = wrap.clientHeight || wrap.getBoundingClientRect().height;
+  const half = FREQ_THUMB_PX / 2;
+  const usable = Math.max(1, wrapH - FREQ_THUMB_PX);
+  // Offset by half-thumb so the thumb's edges never poke outside the wrap
+  const centerPx = half + (1 - state.freqThumbPos) * usable;
+  thumb.style.top = `${centerPx}px`;
+  thumb.style.transform = 'translate(-50%, -50%)';
 }
 
 function initFreqSlider() {
@@ -638,7 +649,9 @@ function initFreqSlider() {
 
   const updateFromEvent = (e) => {
     const r = wrap.getBoundingClientRect();
-    let frac = 1 - (e.clientY - r.top) / r.height;
+    const half = FREQ_THUMB_PX / 2;
+    const usable = Math.max(1, r.height - FREQ_THUMB_PX);
+    let frac = 1 - ((e.clientY - r.top) - half) / usable;
     frac = Math.max(0, Math.min(1, frac));
     state.freqThumbPos = frac;
     state.freq = freqFromFrac(frac);
