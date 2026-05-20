@@ -344,7 +344,7 @@ function tick(now) {
         setTimeout(() => {
           sp.iconEl.classList.remove('fired');
           sp.thumbEl.classList.remove('fired');
-        }, 500);
+        }, 200);
         const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
         const travelTime = d / C_VIS;
         const amp = 0.55 / Math.sqrt(d / 220 + 1);
