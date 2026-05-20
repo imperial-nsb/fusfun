@@ -114,12 +114,21 @@ html, body {
 #brand {
   position: absolute;
   bottom: 18px; right: 18px;
-  z-index: 5;
+  z-index: 2;             /* below the mic so dragging mic over it stays visible */
+  text-align: right;
+  pointer-events: none;
+  color: #1f2a36;
+}
+#brand .logo {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.08em;
-  color: #1f2a36;
-  pointer-events: none;
+}
+#brand .info {
+  font-size: 11px;
+  color: #5b6b7d;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 
 /* Speaker rows */
