@@ -168,11 +168,14 @@ html, body {
 .speaker-icon {
   margin-left: 10px;
   cursor: pointer;
-  transition: transform 0.08s ease, filter 0.1s ease;
+  transition: transform 0.12s cubic-bezier(.34, 1.6, .64, 1), filter 0.1s ease;
   flex-shrink: 0;
 }
 .speaker-icon:active { transform: scale(0.9); }
-.speaker-icon.fired { filter: drop-shadow(0 0 8px rgba(255, 213, 74, 0.9)); }
+.speaker-icon.fired {
+  transform: scale(1.18);
+  filter: drop-shadow(0 0 10px rgba(255, 213, 74, 0.95));
+}
 .speaker-icon img { display: block; width: 100%; height: 100%; pointer-events: none; }
 
 /* Mic */

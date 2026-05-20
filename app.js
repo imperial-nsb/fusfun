@@ -331,7 +331,7 @@ function tick(now) {
         sp.fireStart = sp.cursorStart + delaySec;
         sp.firedFreq = state.freq;              // freeze freq at emit-time → visual wavelength
         sp.iconEl.classList.add('fired');
-        setTimeout(() => sp.iconEl.classList.remove('fired'), 220);
+        setTimeout(() => sp.iconEl.classList.remove('fired'), 320);
         const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
         const travelTime = d / C_VIS;
         const amp = 0.55 / Math.sqrt(d / 220 + 1);
