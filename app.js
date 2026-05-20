@@ -335,7 +335,15 @@ function tick(now) {
         const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
         const travelTime = d / C_VIS;
         const amp = 0.55 / Math.sqrt(d / 220 + 1);
-        playBeep(travelTime, amp, sp.firedFreq);
+        // Two sources of perceived audio lag, both subtracted from schedule:
+        //  1. audio output latency: hardware/driver buffer (Bluetooth is much worse).
+        //  2. visual lead: the Gaussian glow at the mic rises well before peak, so
+        //     the brain marks the "event" at the rising edge — align audio onset to
+        //     that edge (~0.7σ before envelope peak) instead of to peak.
+        const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
+        const visualLead = 0.7 * SIGMA / C_VIS;
+        const scheduleTime = Math.max(0, travelTime - sysLatency - visualLead);
+        playBeep(scheduleTime, amp, sp.firedFreq);
       }
     }
   }
