@@ -393,7 +393,7 @@ function moveDelayFromEvent(e, sp) {
 // position (delayed via the sweep, but the actual emit is still "now-ish").
 function emitFromSpeaker(sp, fireStart) {
   const firedFreq = state.freq;
-  emitPacket(sp.x, sp.y, fireStart, firedFreq);
+  emitPacket(sp.x, sp.y, fireStart, firedFreq, sp);
   sp.iconEl.classList.add('fired');
   setTimeout(() => sp.iconEl.classList.remove('fired'), 200);
   const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
@@ -493,17 +493,47 @@ function tick(now) {
 
   renderWaveField();
   updateMicGlow();
+  updateSpeakerPulse();
   requestAnimationFrame(tick);
+}
+
+// Each speaker icon pulses with the slider's wave shape sampled exactly at
+// the sweep dot's current position — so the icon hits max scale when the
+// dot crests the peak, dips below 1 as it crosses the negative side lobes,
+// and decays back to baseline as the dot leaves the pulse.
+function updateSpeakerPulse() {
+  const L = state.layout;
+  for (const sp of state.speakers) {
+    const wp = sp.waveParams;
+    if (!wp) continue;
+    let drive = 0;
+    for (const sw of sp.sweeps) {
+      const sweepT = state.simTime - sw.startTime;
+      if (sweepT < 0) continue;
+      const x = (sweepT / L.tMax) * L.sliderW;
+      const dx = x - wp.peakX;
+      // Skip once well past the pulse envelope to keep the icon at baseline.
+      if (Math.abs(dx) > 4 * wp.sigma && sweepT > 0) continue;
+      const env = Math.exp(-(dx * dx) / (2 * wp.sigma * wp.sigma));
+      drive += env * Math.cos(wp.k * dx);
+    }
+    if (Math.abs(drive) > 0.01) {
+      const scale = Math.max(0.7, Math.min(1.4, 1 + drive * 0.35));
+      sp.iconEl.style.transform = `scale(${scale})`;
+    } else if (sp.iconEl.style.transform) {
+      sp.iconEl.style.transform = '';
+    }
+  }
 }
 
 // ============================================================
 // Wave packets — one per fire event, independent of which speaker emitted them
 // ============================================================
-function emitPacket(x, y, fireStart, firedFreq) {
+function emitPacket(x, y, fireStart, firedFreq, sp) {
   // Cap concurrent packets: if the pool is full, evict the oldest. With
   // MAX_PACKETS sized at 4× N_MAX this only kicks in under sustained mashing.
   if (state.packets.length >= MAX_PACKETS) state.packets.shift();
-  state.packets.push({ x, y, fireStart, k: kForFreq(firedFreq), sigma: sigmaForFreq(firedFreq) });
+  state.packets.push({ x, y, fireStart, k: kForFreq(firedFreq), sigma: sigmaForFreq(firedFreq), sp });
 }
 
 function pruneExpiredPackets(t) {

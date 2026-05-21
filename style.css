@@ -182,11 +182,10 @@ html, body {
 }
 .speaker-icon {
   cursor: pointer;
-  transition: transform 0.12s cubic-bezier(.34, 1.6, .64, 1), filter 0.1s ease;
+  transform-origin: center center;
+  transition: filter 0.1s ease;
 }
-.speaker-icon:active { transform: scale(0.9); }
 .speaker-icon.fired {
-  transform: scale(1.18);
   filter: drop-shadow(0 0 10px rgba(255, 213, 74, 0.95));
 }
 .speaker-icon img { display: block; width: 100%; height: 100%; pointer-events: none; }
@@ -213,7 +212,7 @@ html, body {
 }
 .control-label {
   position: absolute;
-  top: 10px; left: 0; right: 0;
+  top: 22px; left: 0; right: 0;
   text-align: center;
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -276,8 +275,8 @@ html, body {
 }
 .btn {
   padding: 11px 22px;
-  border: 2px solid #1f2a36;
-  background: white;
+  border: 1px solid rgba(31, 42, 54, 0.2);
+  background: rgba(31, 42, 54, 0.12);
   font-size: 15px;
   font-weight: 600;
   border-radius: 8px;
@@ -286,7 +285,7 @@ html, body {
   transition: background 0.12s ease, transform 0.08s ease;
   font-family: inherit;
 }
-.btn:hover { background: #f4f6fa; }
+.btn:hover { background: rgba(31, 42, 54, 0.2); }
 .btn:active { transform: scale(0.96); }
 
 #count {
