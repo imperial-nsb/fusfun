@@ -55,6 +55,10 @@ const state = {
   packets: [],          // {x, y, fireStart, k} — live wave packets, GC'd each frame
   mic: { x: 800, y: 400 },
   probeMode: 'mic',     // 'mic' = play received sound; 'bubble' = oscillate visually
+  // Bubble dynamics: a damped harmonic oscillator driven by the local field.
+  // Keeps state across frames so the bubble rings (continues oscillating at its
+  // own resonance) after a wave packet has passed.
+  bubble: { x: 0, v: 0 },
   dragging: null,       // 'freq' | 'mic' | { type:'delay', sp }
   freqThumbPos: 0,      // 0..1, 0=bottom (low), 1=top (high)
   simTime: 0,
@@ -496,7 +500,7 @@ function tick(now) {
   }
 
   renderWaveField();
-  updateMicGlow();
+  updateMicGlow(dt);
   updateSpeakerPulse();
   requestAnimationFrame(tick);
 }
@@ -570,21 +574,36 @@ function fieldAtPoint(px, py, t) {
 }
 
 const micEl = () => document.getElementById('mic');
-function updateMicGlow() {
+
+// Bubble's natural resonance & damping (visual, not physical). Underdamped so
+// it rings audibly after a wave packet passes. Period ≈ 2π/ω₀.
+const BUBBLE_OMEGA = 30;        // rad/s — ringing frequency
+const BUBBLE_DAMPING = 0.05;    // 0..1, fraction of critical (Q ≈ 1/(2ζ) ≈ 10)
+const BUBBLE_DRIVE_GAIN = 600;  // field → acceleration
+
+function updateMicGlow(dt) {
   const f = fieldAtPoint(state.mic.x, state.mic.y, state.simTime);
   const el = micEl();
   const img = el.querySelector('img');
   if (state.probeMode === 'bubble') {
-    // Bubble oscillates with the driving waveform: bigger on positive pressure,
-    // smaller on rarefaction. Field magnitudes are tiny, so amplify heavily.
-    const drive = Math.max(-1, Math.min(1, f * 60));
-    const scale = 1 + drive * 0.35;
+    // Damped harmonic oscillator: x'' + 2ζω₀ x' + ω₀² x = drive·f
+    // Semi-implicit Euler — stable for SHM at typical 60fps dt.
+    const b = state.bubble;
+    const dtClamped = Math.min(dt, 0.05);
+    const a = -BUBBLE_OMEGA * BUBBLE_OMEGA * b.x
+            - 2 * BUBBLE_DAMPING * BUBBLE_OMEGA * b.v
+            + BUBBLE_DRIVE_GAIN * f;
+    b.v += a * dtClamped;
+    b.x += b.v * dtClamped;
+    // Clamp so a very strong pulse can't blow the bubble off-screen.
+    const disp = Math.max(-0.85, Math.min(0.85, b.x));
+    const scale = 1 + disp;
     const baseRot = parseFloat(img.dataset.rotate) || 0;
     const baseFit = parseFloat(img.dataset.fit) || 1;
     img.style.transform = `rotate(${baseRot}deg) scale(${baseFit * scale})`;
-    const glow = Math.abs(drive) * 14;
+    const glow = Math.abs(disp) * 22;
     el.style.filter = glow > 0.5
-      ? `drop-shadow(0 0 ${glow}px rgba(140, 200, 255, ${0.3 + Math.abs(drive) * 0.5}))`
+      ? `drop-shadow(0 0 ${glow}px rgba(140, 200, 255, ${0.3 + Math.abs(disp) * 0.7}))`
       : '';
   } else {
     const intensity = Math.min(1, Math.abs(f) * 50);
@@ -907,8 +926,10 @@ function setProbeMode(mode) {
   el.dataset.mode = mode;
   applyIconToImg(el.querySelector('img'), cfg[iconKey]);
   resizeProbe();
-  // Clear any lingering filter from the previous mode.
+  // Clear any lingering filter from the previous mode + reset bubble dynamics.
   el.style.filter = '';
+  state.bubble.x = 0;
+  state.bubble.v = 0;
   for (const btn of document.querySelectorAll('#probe-toggle .probe-opt')) {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   }
