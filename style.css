@@ -173,18 +173,6 @@ html, body {
   stroke-linejoin: round;
   pointer-events: none;
 }
-.wave-peak {
-  fill: #2a2f36;
-  stroke: #1f2a36;
-  stroke-width: 1.5;
-  cursor: ew-resize;
-  transition: fill 0.55s ease-out, filter 0.55s ease-out;
-}
-.wave-peak.fired {
-  fill: #34b358;
-  filter: drop-shadow(0 0 8px rgba(52, 208, 90, 0.9));
-  transition: fill 0.08s cubic-bezier(.2, .7, .3, 1), filter 0.08s cubic-bezier(.2, .7, .3, 1);
-}
 .sweep-dot {
   fill: #34d05a;
   stroke: rgba(255, 255, 255, 0.6);

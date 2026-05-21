@@ -7,7 +7,13 @@
 // laptop screen at the default 8-speaker count.
 // ============================================================
 const C_VIS = 240;             // wave speed (pixels per second)
-const SIGMA    = 32;              // wave-packet envelope width (pixels)
+// Wave-packet envelope width is per-packet, scaled with that packet's
+// wavelength so we always see roughly one peak + one trough regardless of
+// frequency. SIGMA_WL_FRAC sets the scaling; SIGMA_FLOOR keeps high-freq
+// packets visible.
+const SIGMA_WL_FRAC = 0.5;        // sigma ≈ 0.5 × wavelength → ~1 cycle visible
+const SIGMA_FLOOR   = 12;         // minimum sigma in pixels
+function sigmaForFreq(f) { return Math.max(SIGMA_FLOOR, wavelengthForFreq(f) * SIGMA_WL_FRAC); }
 // Visual wavelength is anchored at the reference frequency, then scaled by
 // the physical λ ∝ 1/f relationship. The wavelength used for a packet is
 // captured at the moment it fires (baked into each packet's k), so changing
@@ -193,7 +199,10 @@ function computeLayout() {
   // canvas corner is furthest. Speakers live at x=speakerX, y∈[topPad,h-botPad],
   // so the worst-case dy is max(topPad, botPad) further than h/2 — bound by h.
   const maxTravel = Math.hypot(Math.max(speakerX, w - speakerX), h);
-  const packetLifetime = (maxTravel + PACKET_ENVELOPE_MARGIN * SIGMA) / C_VIS;
+  // Use the widest possible sigma (low freq → long wavelength) for the
+  // worst-case envelope tail when sizing packet lifetime.
+  const maxSigma = sigmaForFreq(FREQ_MIN);
+  const packetLifetime = (maxTravel + PACKET_ENVELOPE_MARGIN * maxSigma) / C_VIS;
 
   return {
     w, h,
@@ -239,10 +248,6 @@ function rebuildSpeakers() {
     const line = document.createElementNS(SVG_NS, 'path');
     line.setAttribute('class', 'wave-line');
     slider.appendChild(line);
-    const peak = document.createElementNS(SVG_NS, 'circle');
-    peak.setAttribute('class', 'wave-peak');
-    peak.setAttribute('r', '4');
-    slider.appendChild(peak);
     sliderRow.appendChild(slider);
     slidersLayer.appendChild(sliderRow);
 
@@ -274,11 +279,10 @@ function rebuildSpeakers() {
       sliderRow,
       sliderEl: slider,
       lineEl: line,
-      peakEl: peak,
       iconWrap,
       iconEl: icon,
       idx: i,
-      waveParams: null,               // {baseline, amplitude, sigma, peakX, w} — set by updateWavePath
+      waveParams: null,               // {centerY, amplitude, sigma, k, peakX, w, visualPad} — set by updateThumbPosition
     };
     state.speakers.push(sp);
 
@@ -290,32 +294,41 @@ function rebuildSpeakers() {
 }
 
 // Evaluate the slider's wave curve at horizontal position x.
-// y = baseline - amplitude * exp(-((x - peakX)^2) / (2 * sigma^2))
+// Gaussian-modulated cosine — positive pressure peak above the centerline,
+// negative-pressure side lobes (ringing) below it.
+//   y = centerY - amplitude * exp(-dx²/(2σ²)) * cos(k*dx)
 function waveY(x, wp) {
   const dx = x - wp.peakX;
-  return wp.baseline - wp.amplitude * Math.exp(-(dx * dx) / (2 * wp.sigma * wp.sigma));
+  const env = Math.exp(-(dx * dx) / (2 * wp.sigma * wp.sigma));
+  const osc = Math.cos(wp.k * dx);
+  return wp.centerY - wp.amplitude * env * osc;
 }
 
 function updateThumbPosition(sp) {
   const L = state.layout;
   const w = L.sliderW;
   const h = L.iconSize;
-  const baseline = h - 6;
-  const amplitude = h - 14;
+  // Zero-DC line at the vertical center of the row (= speaker icon centerline).
+  const centerY = h / 2;
+  const amplitude = (h - 8) / 2;
   const visualPad = w * VISUAL_PAD_FRAC;
   // Subtle linear shrink with frequency: low freq → wider bump, high freq →
   // narrower bump. Just a visual hint, not physically accurate.
   const freqNorm = (state.freq - FREQ_MIN) / (FREQ_MAX - FREQ_MIN);
-  const sigmaScale = 1.15 - 0.3 * freqNorm;     // 1.15 at FREQ_MIN, 0.85 at FREQ_MAX
-  const sigma = Math.max(5, w * 0.035 * sigmaScale);
+  const sigmaScale = 1.5 - 1.0 * freqNorm;      // 1.5 at FREQ_MIN, 0.5 at FREQ_MAX
+  const sigma = Math.max(8, w * 0.035 * sigmaScale);
+  // Wavenumber tied to sigma so ~1 main lobe + small side lobes are visible:
+  // wavelength = 2*sigma → k = π/sigma.
+  const k = Math.PI / sigma;
   // delayFrac 0..1 maps the peak across [visualPad, sliderW - visualPad] —
   // the left band is reserved for the onramp, the right band for the offramp.
   const peakX = visualPad + sp.delayFrac * (w - 2 * visualPad);
-  const wp = { baseline, amplitude, sigma, peakX, w, visualPad };
+  const wp = { centerY, amplitude, sigma, k, peakX, w, visualPad };
   sp.waveParams = wp;
 
-  // Stroke the wave as a polyline sampled across the full width.
-  const N = 64;
+  // Stroke the wave as a polyline. Sample density scales with sigma so the
+  // bump stays smooth even when narrow (high freq → small sigma).
+  const N = Math.max(64, Math.ceil((w / sigma) * 10));
   let d = '';
   for (let i = 0; i <= N; i++) {
     const x = (i / N) * w;
@@ -323,9 +336,6 @@ function updateThumbPosition(sp) {
     d += (i === 0 ? 'M ' : ' L ') + x.toFixed(2) + ' ' + y.toFixed(2);
   }
   sp.lineEl.setAttribute('d', d);
-  sp.peakEl.setAttribute('cx', peakX);
-  sp.peakEl.setAttribute('cy', baseline - amplitude);
-
   // Reposition any in-flight sweep dots so they sit on the new curve.
   for (const sw of sp.sweeps) {
     const sweepT = state.simTime - sw.startTime;
@@ -385,16 +395,12 @@ function emitFromSpeaker(sp, fireStart) {
   const firedFreq = state.freq;
   emitPacket(sp.x, sp.y, fireStart, firedFreq);
   sp.iconEl.classList.add('fired');
-  sp.peakEl.classList.add('fired');
-  setTimeout(() => {
-    sp.iconEl.classList.remove('fired');
-    sp.peakEl.classList.remove('fired');
-  }, 200);
+  setTimeout(() => sp.iconEl.classList.remove('fired'), 200);
   const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
   const travelTime = d / C_VIS;
   const amp = 0.55 / Math.sqrt(d / 220 + 1);
   const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
-  const visualLead = 0.7 * SIGMA / C_VIS;
+  const visualLead = 0.7 * sigmaForFreq(firedFreq) / C_VIS;
   // fireStart may be in the past (sweep fire from a slightly earlier instant);
   // schedule relative to now, not to fireStart, so we never schedule in the past.
   const ageFromNow = state.simTime - fireStart;
@@ -410,7 +416,7 @@ function startSweep(sp) {
   cursorEl.setAttribute('class', 'sweep-dot');
   cursorEl.setAttribute('r', '5');
   cursorEl.setAttribute('cx', '0');
-  cursorEl.setAttribute('cy', sp.waveParams ? sp.waveParams.baseline : 0);
+  cursorEl.setAttribute('cy', sp.waveParams ? sp.waveParams.centerY : 0);
   sp.sliderEl.appendChild(cursorEl);
   sp.sweeps.push({ startTime: state.simTime, armed: true, cursorEl });
 }
@@ -494,7 +500,7 @@ function emitPacket(x, y, fireStart, firedFreq) {
   // Cap concurrent packets: if the pool is full, evict the oldest. With
   // MAX_PACKETS sized at 4× N_MAX this only kicks in under sustained mashing.
   if (state.packets.length >= MAX_PACKETS) state.packets.shift();
-  state.packets.push({ x, y, fireStart, k: kForFreq(firedFreq) });
+  state.packets.push({ x, y, fireStart, k: kForFreq(firedFreq), sigma: sigmaForFreq(firedFreq) });
 }
 
 function pruneExpiredPackets(t) {
@@ -520,7 +526,7 @@ function fieldAtPoint(px, py, t) {
     const r = Math.sqrt(dx*dx + dy*dy);
     const wr = C_VIS * dt;
     const arg = r - wr;
-    const env = Math.exp(-arg*arg / (2 * SIGMA * SIGMA));
+    const env = Math.exp(-arg*arg / (2 * pk.sigma * pk.sigma));
     f += env * Math.cos(pk.k * arg) / Math.sqrt(r + 50);
   }
   return f;
@@ -560,8 +566,8 @@ uniform int uN;             // number of live packets this frame
 uniform vec2 uPos[256];
 uniform float uStart[256];
 uniform float uK[256];      // per-packet visual wavenumber (depends on freq at emit time)
+uniform float uSigmaFloor;  // minimum envelope width in pixels (high-freq clamp)
 uniform float uC;
-uniform float uSigma;
 uniform float uLifetime;
 void main() {
   // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
@@ -575,7 +581,10 @@ void main() {
     float r = length(d);
     float wr = uC * dt;
     float arg = r - wr;
-    float env = exp(-arg*arg / (2.0 * uSigma * uSigma));
+    // sigma scales with wavelength so packets show ~1 cycle regardless of freq.
+    // sigma = 0.5 * wavelength = π / k, clamped to a floor for visibility.
+    float s = max(uSigmaFloor, 3.14159265 / uK[i]);
+    float env = exp(-arg*arg / (2.0 * s * s));
     float osc = cos(uK[i] * arg);
     field += env * osc / sqrt(r + 50.0);
   }
@@ -636,13 +645,13 @@ function initGL() {
     uPos:        gl.getUniformLocation(program, 'uPos'),
     uStart:      gl.getUniformLocation(program, 'uStart'),
     uC:          gl.getUniformLocation(program, 'uC'),
-    uSigma:      gl.getUniformLocation(program, 'uSigma'),
     uK:          gl.getUniformLocation(program, 'uK'),
+    uSigmaFloor: gl.getUniformLocation(program, 'uSigmaFloor'),
     uLifetime:   gl.getUniformLocation(program, 'uLifetime'),
   };
 
   gl.uniform1f(uniforms.uC, C_VIS);
-  gl.uniform1f(uniforms.uSigma, SIGMA);
+  gl.uniform1f(uniforms.uSigmaFloor, SIGMA_FLOOR);
 
   resizeGL();
 }
