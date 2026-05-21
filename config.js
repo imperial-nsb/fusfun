@@ -15,6 +15,7 @@ window.FUSFUN_CONFIG = {
     speaker:     { src: 'assets/speaker.png', rotate: 45 },   // array elements
     freqSpeaker: { src: 'assets/speaker.png', rotate: 0 },   // preview by the freq slider
     microphone:  { src: 'assets/microphone.png', rotate: -135 },
+    bubble:      { src: 'assets/bubble.png', rotate: 0 },
     play:        { src: 'assets/play.svg' },
   },
 };

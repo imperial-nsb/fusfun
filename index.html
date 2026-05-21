@@ -57,13 +57,17 @@
   <div id="main-panel">
     <canvas id="wave-canvas"></canvas>
     <div id="speakers-layer"></div>
-    <div id="mic">
+    <div id="probe-toggle">
+      <button class="probe-opt active" data-mode="mic" aria-label="Microphone probe">
+        <img data-icon="microphone" alt="" draggable="false" />
+      </button>
+      <button class="probe-opt" data-mode="bubble" aria-label="Bubble probe">
+        <img data-icon="bubble" alt="" draggable="false" />
+      </button>
+    </div>
+    <div id="mic" data-mode="mic">
       <img data-icon="microphone" alt="" draggable="false" />
     </div>
-    <label id="envelope-toggle">
-      <input type="checkbox" id="envelope-checkbox" />
-      <span>Envelope</span>
-    </label>
     <div id="brand">
       <div class="logo">FUS FUN</div>
       <div class="info">

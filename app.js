@@ -54,13 +54,11 @@ const state = {
   speakers: [],         // see rebuildSpeakers() for shape
   packets: [],          // {x, y, fireStart, k} — live wave packets, GC'd each frame
   mic: { x: 800, y: 400 },
+  probeMode: 'mic',     // 'mic' = play received sound; 'bubble' = oscillate visually
   dragging: null,       // 'freq' | 'mic' | { type:'delay', sp }
   freqThumbPos: 0,      // 0..1, 0=bottom (low), 1=top (high)
   simTime: 0,
   layout: null,         // computed each resize
-  envelope: false,      // toggle: accumulate max |field| over time
-  envelopeNeedsClear: false,
-  envelopeFadeCounter: 0,
 };
 
 // ============================================================
@@ -402,13 +400,16 @@ function emitFromSpeaker(sp, fireStart) {
   const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
   const travelTime = d / C_VIS;
   const amp = 0.55 / Math.sqrt(d / 220 + 1);
-  const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
-  const visualLead = 0.7 * sigmaForFreq(firedFreq) / C_VIS;
-  // fireStart may be in the past (sweep fire from a slightly earlier instant);
-  // schedule relative to now, not to fireStart, so we never schedule in the past.
-  const ageFromNow = state.simTime - fireStart;
-  const scheduleTime = Math.max(0, travelTime - sysLatency - visualLead - ageFromNow);
-  playBeep(scheduleTime, amp, firedFreq);
+  // Only the microphone probe "hears" — bubble mode is silent (it oscillates visually).
+  if (state.probeMode === 'mic') {
+    const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
+    const visualLead = 0.7 * sigmaForFreq(firedFreq) / C_VIS;
+    // fireStart may be in the past (sweep fire from a slightly earlier instant);
+    // schedule relative to now, not to fireStart, so we never schedule in the past.
+    const ageFromNow = state.simTime - fireStart;
+    const scheduleTime = Math.max(0, travelTime - sysLatency - visualLead - ageFromNow);
+    playBeep(scheduleTime, amp, firedFreq);
+  }
 }
 
 // PLAY → push a new sweep onto every speaker. Multiple PLAY presses stack:
@@ -571,13 +572,28 @@ function fieldAtPoint(px, py, t) {
 const micEl = () => document.getElementById('mic');
 function updateMicGlow() {
   const f = fieldAtPoint(state.mic.x, state.mic.y, state.simTime);
-  const intensity = Math.min(1, Math.abs(f) * 50);
   const el = micEl();
-  if (intensity > 0.05) {
-    const glow = 6 + intensity * 24;
-    el.style.filter = `drop-shadow(0 0 ${glow}px rgba(255, 200, 60, ${0.4 + intensity * 0.6})) brightness(${1 + intensity * 0.4})`;
+  const img = el.querySelector('img');
+  if (state.probeMode === 'bubble') {
+    // Bubble oscillates with the driving waveform: bigger on positive pressure,
+    // smaller on rarefaction. Field magnitudes are tiny, so amplify heavily.
+    const drive = Math.max(-1, Math.min(1, f * 60));
+    const scale = 1 + drive * 0.35;
+    const baseRot = parseFloat(img.dataset.rotate) || 0;
+    const baseFit = parseFloat(img.dataset.fit) || 1;
+    img.style.transform = `rotate(${baseRot}deg) scale(${baseFit * scale})`;
+    const glow = Math.abs(drive) * 14;
+    el.style.filter = glow > 0.5
+      ? `drop-shadow(0 0 ${glow}px rgba(140, 200, 255, ${0.3 + Math.abs(drive) * 0.5}))`
+      : '';
   } else {
-    el.style.filter = '';
+    const intensity = Math.min(1, Math.abs(f) * 50);
+    if (intensity > 0.05) {
+      const glow = 6 + intensity * 24;
+      el.style.filter = `drop-shadow(0 0 ${glow}px rgba(255, 200, 60, ${0.4 + intensity * 0.6})) brightness(${1 + intensity * 0.4})`;
+    } else {
+      el.style.filter = '';
+    }
   }
 }
 
@@ -605,11 +621,7 @@ uniform float uK[256];      // per-packet visual wavenumber (depends on freq at 
 uniform float uSigmaFloor;  // minimum envelope width in pixels (high-freq clamp)
 uniform float uC;
 uniform float uLifetime;
-uniform int uEnvelope;      // 1 = subtract |field| from white (light envelope); 0 = bipolar red/blue field
-uniform int uFadeMode;      // 1 = output uFadeColor (used to gently fade canvas back to white)
-uniform vec4 uFadeColor;
 void main() {
-  if (uFadeMode == 1) { outColor = uFadeColor; return; }
   // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
   vec2 p = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y) / uDpr;
   float field = 0.0;
@@ -629,21 +641,13 @@ void main() {
     field += env * osc / sqrt(r + 50.0);
   }
   float v = clamp(field * 7.0, -1.0, 1.0);
-  if (uEnvelope == 1) {
-    // Light-mode envelope: subtract |amplitude| from white. Combined with
-    // MIN blending in JS, each pixel keeps the darkest tint it's seen —
-    // i.e. the peak amplitude that has passed through it.
-    float amp = abs(v);
-    outColor = vec4(1.0 - amp * 0.55, 1.0 - amp * 0.80, 1.0 - amp * 0.25, 1.0);
-  } else {
-    vec3 base = vec3(1.0);
-    vec3 hot  = vec3(0.92, 0.18, 0.18);
-    vec3 cold = vec3(0.16, 0.36, 0.86);
-    vec3 col;
-    if (v > 0.0) col = mix(base, hot, v);
-    else         col = mix(base, cold, -v);
-    outColor = vec4(col, 1.0);
-  }
+  vec3 base = vec3(1.0);
+  vec3 hot  = vec3(0.92, 0.18, 0.18);
+  vec3 cold = vec3(0.16, 0.36, 0.86);
+  vec3 col;
+  if (v > 0.0) col = mix(base, hot, v);
+  else         col = mix(base, cold, -v);
+  outColor = vec4(col, 1.0);
 }`;
 
 function compileShader(type, src) {
@@ -659,7 +663,7 @@ function compileShader(type, src) {
 
 function initGL() {
   canvas = document.getElementById('wave-canvas');
-  gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+  gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
   if (!gl) {
     alert("WebGL2 is required. Please use a modern browser (Chrome / Safari / Firefox).");
     return;
@@ -696,9 +700,6 @@ function initGL() {
     uK:          gl.getUniformLocation(program, 'uK'),
     uSigmaFloor: gl.getUniformLocation(program, 'uSigmaFloor'),
     uLifetime:   gl.getUniformLocation(program, 'uLifetime'),
-    uEnvelope:   gl.getUniformLocation(program, 'uEnvelope'),
-    uFadeMode:   gl.getUniformLocation(program, 'uFadeMode'),
-    uFadeColor:  gl.getUniformLocation(program, 'uFadeColor'),
   };
 
   gl.uniform1f(uniforms.uC, C_VIS);
@@ -725,42 +726,9 @@ function renderWaveField() {
   const lifetime = state.layout.packetLifetime;
   pruneExpiredPackets(state.simTime);
 
-  // Both modes use a white background. Envelope mode accumulates the
-  // darkest (= highest |amplitude|) seen at each pixel via MIN blending;
-  // normal mode redraws the current field each frame with no blending.
-  if (state.envelopeNeedsClear) {
-    gl.disable(gl.BLEND);
-    gl.clearColor(1.0, 1.0, 1.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    state.envelopeNeedsClear = false;
-  }
-  if (state.envelope) {
-    // Fade pass: smaller alpha applied more often so the decay reads as a
-    // smooth fade instead of stepped snaps. Per-pass change stays above the
-    // 8-bit framebuffer's rounding threshold so dark trails keep lightening.
-    // ~0.01 alpha every ~20 frames (~333ms) ≈ ~75s for a 90% fade.
-    state.envelopeFadeCounter++;
-    if (state.envelopeFadeCounter >= 20) {
-      state.envelopeFadeCounter = 0;
-      gl.enable(gl.BLEND);
-      gl.blendEquation(gl.FUNC_ADD);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      gl.uniform1i(uniforms.uFadeMode, 1);
-      gl.uniform4f(uniforms.uFadeColor, 1.0, 1.0, 1.0, 0.01);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      gl.uniform1i(uniforms.uFadeMode, 0);
-    }
-    // Field pass: MIN-blend the current frame's |amplitude|-on-white over the canvas.
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.MIN);
-    gl.blendFunc(gl.ONE, gl.ONE);
-  } else {
-    gl.disable(gl.BLEND);
-    gl.clearColor(1.0, 1.0, 1.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.uniform1i(uniforms.uFadeMode, 0);
-  }
-  gl.uniform1i(uniforms.uEnvelope, state.envelope ? 1 : 0);
+  gl.disable(gl.BLEND);
+  gl.clearColor(1.0, 1.0, 1.0, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
   gl.uniform1f(uniforms.uDpr, dpr);
@@ -799,14 +767,16 @@ function setMicPosition(x, y) {
   el.style.top  = `${state.mic.y}px`;
 }
 
+let resizeProbe = () => {};
 function initMic() {
   const el = micEl();
   const img = el.querySelector('img');
   const baseDim = Math.max(36, Math.min(56, state.layout.h * 0.065));
 
   // Size the mic wrapper to match the image's natural aspect ratio AFTER
-  // rotation, so the icon isn't squished. Re-run whenever the image (re)loads.
-  const resize = () => {
+  // rotation, so the icon isn't squished. Re-run whenever the image (re)loads
+  // or the probe icon is swapped (mic ↔ bubble).
+  resizeProbe = () => {
     const nw = img.naturalWidth || 1;
     const nh = img.naturalHeight || 1;
     const rot = parseFloat(img.dataset.rotate) || 0;
@@ -820,8 +790,8 @@ function initMic() {
     el.style.height = `${baseDim * effH / maxDim}px`;
     setMicPosition(state.mic.x, state.mic.y);   // re-clamp under new size
   };
-  if (img.complete && img.naturalWidth) resize();
-  else img.addEventListener('load', resize);
+  img.addEventListener('load', resizeProbe);
+  if (img.complete && img.naturalWidth) resizeProbe();
 
   setMicPosition(state.layout.w * 0.7, state.layout.topPad + state.layout.usable / 2);
 
@@ -926,6 +896,35 @@ function initFreqSlider() {
 }
 
 // ============================================================
+// Probe mode toggle (mic ↔ bubble)
+// ============================================================
+function setProbeMode(mode) {
+  if (mode !== 'mic' && mode !== 'bubble') return;
+  state.probeMode = mode;
+  const iconKey = mode === 'mic' ? 'microphone' : 'bubble';
+  const cfg = (window.FUSFUN_CONFIG && window.FUSFUN_CONFIG.icons) || {};
+  const el = micEl();
+  el.dataset.mode = mode;
+  applyIconToImg(el.querySelector('img'), cfg[iconKey]);
+  resizeProbe();
+  // Clear any lingering filter from the previous mode.
+  el.style.filter = '';
+  for (const btn of document.querySelectorAll('#probe-toggle .probe-opt')) {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  }
+}
+
+function initProbeToggle() {
+  for (const btn of document.querySelectorAll('#probe-toggle .probe-opt')) {
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      ensureAudio();
+      setProbeMode(btn.dataset.mode);
+    });
+  }
+}
+
+// ============================================================
 // Top-level buttons
 // ============================================================
 function initButtons() {
@@ -951,16 +950,6 @@ function initButtons() {
   document.getElementById('btn-minus').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (state.n > N_MIN) { state.n--; rebuildSpeakers(); }
-  });
-
-  const envCheckbox = document.getElementById('envelope-checkbox');
-  // Browsers persist checkbox state across refresh — sync our state to whatever
-  // the browser restored so the visible checkmark matches actual behavior.
-  state.envelope = envCheckbox.checked;
-  state.envelopeNeedsClear = true;
-  envCheckbox.addEventListener('change', (e) => {
-    state.envelope = e.target.checked;
-    state.envelopeNeedsClear = true;     // wipe canvas to the new mode's background
   });
 
   // Spacebar = play (suppress page scroll, ignore key repeat)
@@ -1025,6 +1014,7 @@ function applyIconToImg(imgEl, entry) {
   imgEl.style.transformOrigin = 'center center';
   imgEl.style.transform = `rotate(${rotate}deg) scale(${fit})`;
   imgEl.dataset.rotate = String(rotate);
+  imgEl.dataset.fit = String(fit);
   imgEl.src = src;
 }
 
@@ -1041,6 +1031,7 @@ window.addEventListener('load', () => {
   initGL();
   rebuildSpeakers();
   initMic();
+  initProbeToggle();
   initFreqSlider();
   initButtons();
   window.addEventListener('resize', onResize);
