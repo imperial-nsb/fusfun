@@ -30,8 +30,11 @@ const N_MIN = 2, N_MAX = 16, N_DEFAULT = 8;
 const MAX_PACKETS = 256;
 const FREQ_MIN = 220, FREQ_MAX = 2500;
 const FREQ_DEFAULT = 800;
-const SLIDER_W_FRACTION  = 0.16;  // slider width as fraction of main panel width
 const BEEP_DURATION = 0.20;       // seconds, per-speaker beep length at mic
+// Fraction of slider width reserved on the left as the wave's onramp zone.
+// Even at delayFrac=0 the peak sits this far in, so the leading edge of the
+// Gaussian is visible and the sweep dot has room to rise into the peak.
+const VISUAL_PAD_FRAC = 0.14;
 
 // Icon sources come from config.js (window.FUSFUN_CONFIG.icons).
 // Edit config.js to swap icons without touching code.
@@ -133,35 +136,30 @@ function playBeep(whenFromNow, amplitude, freq, duration = BEEP_DURATION) {
 // ============================================================
 function computeLayout() {
   const main = document.getElementById('main-panel');
-  const r = main.getBoundingClientRect();
-  const w = r.width, h = r.height;
+  const ctrl = document.getElementById('control-panel');
+  const mainR = main.getBoundingClientRect();
+  const ctrlR = ctrl.getBoundingClientRect();
+  const w = mainR.width, h = mainR.height;
+  const ctrlW = ctrlR.width;
+  // The two panels share grid row height, so the same y coords map to the
+  // same visual row in both → slider in control-panel lines up with the
+  // speaker icon in main-panel.
   const topPad = 110;
   const botPad = 175;
   const usable = h - topPad - botPad;
   const n = state.n;
   const iconSize = Math.max(32, Math.min(68, usable / n - 4));
 
-  // ----- Control box drives the layout -----
-  // The box position is authoritative; the slider column sits centered inside
-  // it, and the speaker icons sit just to the right of the box. This keeps
-  // the slider visually centered within "Control" no matter the screen width.
-  const sliderW = w * SLIDER_W_FRACTION;
-  const boxPadX = 28;
-  const boxPadY = 18;
-  const boxLabelHeadroom = 26;       // room above first slider for "CONTROL" label
-  const boxContentMin = 176;         // play button width — box must fit it
-  const boxLeftMargin = 36;          // gap from main-panel left edge to box
-  const iconGap = 26;                // gap from box right edge to speaker icon's left edge
-  const boxContent = Math.max(sliderW, boxContentMin);
-  const boxLeft = boxLeftMargin;
-  const boxWidth = boxContent + 2 * boxPadX;
-  const boxRight = boxLeft + boxWidth;
-  const sliderLeft = boxLeft + boxPadX + (boxContent - sliderW) / 2;
-  const speakerX = boxRight + iconGap + iconSize / 2;
-  const iconMarginLeft = (boxRight + iconGap) - (sliderLeft + sliderW);
-  const firstSliderTop = topPad - iconSize / 2;
-  const boxTop = firstSliderTop - boxPadY - boxLabelHeadroom;
-  const boxHeight = (h - 4) - boxTop;    // ends 4px from main-panel bottom
+  // Slider lives inside control-panel, centered horizontally with sliderPadX
+  // padding on each side.
+  const sliderPadX = 22;
+  const sliderW = ctrlW - 2 * sliderPadX;
+  const sliderLeft = sliderPadX;
+
+  // Speaker icons sit just inside the left edge of main-panel.
+  const speakerLeftMargin = 30;
+  const speakerX = speakerLeftMargin + iconSize / 2;
+  const speakerLeft = speakerLeftMargin;
 
   const yFor = (i) => topPad + usable * (n === 1 ? 0.5 : (i + 0.5) / n);
 
@@ -174,7 +172,11 @@ function computeLayout() {
   const refN = N_MAX;
   const refIconSize = Math.max(32, Math.min(68, usable / refN - 4));
   const refMinMicX = speakerX + refIconSize;
-  const refMicY = topPad + usable / 2;
+  // Use mic at the top of the panel (one of the worst-case y positions) so
+  // tMax covers focus when the mic sits above the topmost speaker or below
+  // the bottommost. With mic centered, dMax-dMin shrinks to ~half its
+  // worst-case value and the closest speakers' focus delays clip.
+  const refMicY = topPad;
   let dMin = Infinity, dMax = 0;
   for (let i = 0; i < refN; i++) {
     const sy = topPad + usable * (i + 0.5) / refN;
@@ -182,7 +184,10 @@ function computeLayout() {
     if (d < dMin) dMin = d;
     if (d > dMax) dMax = d;
   }
-  const tMax = Math.max(0.05, (dMax - dMin) / C_VIS);
+  // The visual on/off-ramp pads consume 2*VISUAL_PAD_FRAC of the slider's
+  // span, so the usable delay range is (1 - 2*VISUAL_PAD_FRAC)*tMax. Inflate
+  // tMax accordingly so reference-N focus still exactly fills that range.
+  const tMax = Math.max(0.05, (dMax - dMin) / C_VIS / (1 - 2 * VISUAL_PAD_FRAC));
 
   // Farthest a wave can need to travel: from the speaker column to whichever
   // canvas corner is furthest. Speakers live at x=speakerX, y∈[topPad,h-botPad],
@@ -192,8 +197,7 @@ function computeLayout() {
 
   return {
     w, h,
-    speakerX, sliderW, sliderLeft, iconMarginLeft,
-    boxLeft, boxTop, boxWidth, boxHeight,
+    speakerX, speakerLeft, sliderW, sliderLeft,
     topPad, botPad, usable,
     iconSize, tMax,
     rowHeight: usable / n,
@@ -205,68 +209,76 @@ function computeLayout() {
 // ============================================================
 // Build / rebuild speaker rows
 // ============================================================
-function updateControlBox() {
-  const L = state.layout;
-  const box = document.getElementById('control-box');
-  if (!box) return;
-  box.style.left = `${L.boxLeft}px`;
-  box.style.top = `${L.boxTop}px`;
-  box.style.width = `${L.boxWidth}px`;
-  box.style.height = `${L.boxHeight}px`;
-}
-
 function rebuildSpeakers() {
-  const layer = document.getElementById('speakers-layer');
-  layer.innerHTML = '';
+  const slidersLayer = document.getElementById('sliders-layer');
+  const speakersLayer = document.getElementById('speakers-layer');
+  slidersLayer.innerHTML = '';
+  speakersLayer.innerHTML = '';
   state.speakers = [];
   state.packets.length = 0;   // drop in-flight wave packets from prior speaker set
   state.layout = computeLayout();
   const L = state.layout;
-  updateControlBox();
 
   for (let i = 0; i < state.n; i++) {
     const y = L.yFor(i);
 
-    const row = document.createElement('div');
-    row.className = 'speaker-row';
-    row.style.left = `${L.sliderLeft}px`;
-    row.style.top  = `${y - L.iconSize/2}px`;
-    row.style.height = `${L.iconSize}px`;
+    // Slider row lives in the control panel.
+    const sliderRow = document.createElement('div');
+    sliderRow.className = 'slider-row';
+    sliderRow.style.left = `${L.sliderLeft}px`;
+    sliderRow.style.top  = `${y - L.iconSize/2}px`;
+    sliderRow.style.width = `${L.sliderW}px`;
+    sliderRow.style.height = `${L.iconSize}px`;
 
-    const slider = document.createElement('div');
-    slider.className = 'delay-slider';
-    slider.style.width = `${L.sliderW}px`;
-    slider.style.height = `${L.iconSize}px`;
-    slider.innerHTML = `
-      <div class="track"></div>
-      <div class="thumb"></div>
-    `;
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const slider = document.createElementNS(SVG_NS, 'svg');
+    slider.setAttribute('class', 'delay-wave');
+    slider.setAttribute('width', L.sliderW);
+    slider.setAttribute('height', L.iconSize);
+    slider.setAttribute('viewBox', `0 0 ${L.sliderW} ${L.iconSize}`);
+    const line = document.createElementNS(SVG_NS, 'path');
+    line.setAttribute('class', 'wave-line');
+    slider.appendChild(line);
+    const peak = document.createElementNS(SVG_NS, 'circle');
+    peak.setAttribute('class', 'wave-peak');
+    peak.setAttribute('r', '4');
+    slider.appendChild(peak);
+    sliderRow.appendChild(slider);
+    slidersLayer.appendChild(sliderRow);
+
+    // Speaker icon lives in the main (wave) panel at the same y.
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'speaker-icon-wrap';
+    iconWrap.style.left = `${L.speakerLeft}px`;
+    iconWrap.style.top = `${y - L.iconSize/2}px`;
+    iconWrap.style.width = `${L.iconSize}px`;
+    iconWrap.style.height = `${L.iconSize}px`;
 
     const icon = document.createElement('div');
     icon.className = 'speaker-icon';
     icon.style.width = `${L.iconSize}px`;
     icon.style.height = `${L.iconSize}px`;
-    icon.style.marginLeft = `${L.iconMarginLeft}px`;
     const iconImg = document.createElement('img');
     iconImg.alt = '';
     iconImg.draggable = false;
     applyIconToImg(iconImg, (window.FUSFUN_CONFIG.icons || {}).speaker);
     icon.appendChild(iconImg);
-
-    row.appendChild(slider);
-    row.appendChild(icon);
-    layer.appendChild(row);
+    iconWrap.appendChild(icon);
+    speakersLayer.appendChild(iconWrap);
 
     const sp = {
       x: L.speakerX,                  // wave emits from icon center
       y,
       delayFrac: 0,                   // 0..1, scaled by layout.tMax for actual seconds
       sweeps: [],                     // active PLAY sweeps: { startTime, armed, cursorEl }
-      row,
+      sliderRow,
       sliderEl: slider,
-      thumbEl: slider.querySelector('.thumb'),
+      lineEl: line,
+      peakEl: peak,
+      iconWrap,
       iconEl: icon,
       idx: i,
+      waveParams: null,               // {baseline, amplitude, sigma, peakX, w} — set by updateWavePath
     };
     state.speakers.push(sp);
 
@@ -277,9 +289,51 @@ function rebuildSpeakers() {
   document.getElementById('count-label').textContent = `${state.n}`;
 }
 
+// Evaluate the slider's wave curve at horizontal position x.
+// y = baseline - amplitude * exp(-((x - peakX)^2) / (2 * sigma^2))
+function waveY(x, wp) {
+  const dx = x - wp.peakX;
+  return wp.baseline - wp.amplitude * Math.exp(-(dx * dx) / (2 * wp.sigma * wp.sigma));
+}
+
 function updateThumbPosition(sp) {
   const L = state.layout;
-  sp.thumbEl.style.left = `${sp.delayFrac * L.sliderW}px`;
+  const w = L.sliderW;
+  const h = L.iconSize;
+  const baseline = h - 6;
+  const amplitude = h - 14;
+  const visualPad = w * VISUAL_PAD_FRAC;
+  // Subtle linear shrink with frequency: low freq → wider bump, high freq →
+  // narrower bump. Just a visual hint, not physically accurate.
+  const freqNorm = (state.freq - FREQ_MIN) / (FREQ_MAX - FREQ_MIN);
+  const sigmaScale = 1.15 - 0.3 * freqNorm;     // 1.15 at FREQ_MIN, 0.85 at FREQ_MAX
+  const sigma = Math.max(5, w * 0.035 * sigmaScale);
+  // delayFrac 0..1 maps the peak across [visualPad, sliderW - visualPad] —
+  // the left band is reserved for the onramp, the right band for the offramp.
+  const peakX = visualPad + sp.delayFrac * (w - 2 * visualPad);
+  const wp = { baseline, amplitude, sigma, peakX, w, visualPad };
+  sp.waveParams = wp;
+
+  // Stroke the wave as a polyline sampled across the full width.
+  const N = 64;
+  let d = '';
+  for (let i = 0; i <= N; i++) {
+    const x = (i / N) * w;
+    const y = waveY(x, wp);
+    d += (i === 0 ? 'M ' : ' L ') + x.toFixed(2) + ' ' + y.toFixed(2);
+  }
+  sp.lineEl.setAttribute('d', d);
+  sp.peakEl.setAttribute('cx', peakX);
+  sp.peakEl.setAttribute('cy', baseline - amplitude);
+
+  // Reposition any in-flight sweep dots so they sit on the new curve.
+  for (const sw of sp.sweeps) {
+    const sweepT = state.simTime - sw.startTime;
+    const frac = Math.min(1, Math.max(0, sweepT / state.layout.tMax));
+    const x = frac * w;
+    sw.cursorEl.setAttribute('cx', x);
+    sw.cursorEl.setAttribute('cy', waveY(x, wp));
+  }
 }
 
 function wireSpeakerRow(sp) {
@@ -313,9 +367,11 @@ function wireSpeakerRow(sp) {
 
 function moveDelayFromEvent(e, sp) {
   const rect = sp.sliderEl.getBoundingClientRect();
-  let frac = (e.clientX - rect.left) / rect.width;
-  frac = Math.max(0, Math.min(1, frac));
-  sp.delayFrac = frac;
+  const w = rect.width;
+  const visualPad = w * VISUAL_PAD_FRAC;
+  // Clamp pointer x to the peak's allowed range, then invert the mapping.
+  const x = Math.max(visualPad, Math.min(w - visualPad, e.clientX - rect.left));
+  sp.delayFrac = (x - visualPad) / (w - 2 * visualPad);
   updateThumbPosition(sp);
 }
 
@@ -329,10 +385,10 @@ function emitFromSpeaker(sp, fireStart) {
   const firedFreq = state.freq;
   emitPacket(sp.x, sp.y, fireStart, firedFreq);
   sp.iconEl.classList.add('fired');
-  sp.thumbEl.classList.add('fired');
+  sp.peakEl.classList.add('fired');
   setTimeout(() => {
     sp.iconEl.classList.remove('fired');
-    sp.thumbEl.classList.remove('fired');
+    sp.peakEl.classList.remove('fired');
   }, 200);
   const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
   const travelTime = d / C_VIS;
@@ -347,10 +403,14 @@ function emitFromSpeaker(sp, fireStart) {
 }
 
 // PLAY → push a new sweep onto every speaker. Multiple PLAY presses stack:
-// each gets its own cursor that travels the slider independently.
+// each gets its own dot that travels along the wave curve independently.
 function startSweep(sp) {
-  const cursorEl = document.createElement('div');
-  cursorEl.className = 'cursor';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const cursorEl = document.createElementNS(SVG_NS, 'circle');
+  cursorEl.setAttribute('class', 'sweep-dot');
+  cursorEl.setAttribute('r', '5');
+  cursorEl.setAttribute('cx', '0');
+  cursorEl.setAttribute('cy', sp.waveParams ? sp.waveParams.baseline : 0);
   sp.sliderEl.appendChild(cursorEl);
   sp.sweeps.push({ startTime: state.simTime, armed: true, cursorEl });
 }
@@ -372,13 +432,15 @@ function applyRandomDelays() {
 
 function applyFocusDelays() {
   // delay_i = (d_max - d_i) / C_VIS, where d_i = speaker-to-mic distance.
-  // layout.tMax is sized so at the closest mic position this exactly spans the slider.
+  // The dynamic delay range is now (1 - VISUAL_PAD_FRAC) * tMax — the visual
+  // onramp band on the left consumes the rest. Relative timing is preserved.
   const tMax = state.layout.tMax;
+  const effSpan = (1 - 2 * VISUAL_PAD_FRAC) * tMax;
   const dists = state.speakers.map(sp => Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y));
   const dmax = Math.max(...dists);
   state.speakers.forEach((sp, i) => {
     const delaySec = (dmax - dists[i]) / C_VIS;
-    sp.delayFrac = Math.max(0, Math.min(1, delaySec / tMax));
+    sp.delayFrac = Math.max(0, Math.min(1, delaySec / effSpan));
     updateThumbPosition(sp);
   });
 }
@@ -396,7 +458,10 @@ function tick(now) {
   const L = state.layout;
   const tMax = L.tMax;
   for (const sp of state.speakers) {
-    const delaySec = sp.delayFrac * tMax;
+    // Fire time = position of peak along the sweep, in seconds. Includes the
+    // visual-pad offset, so even at delayFrac=0 there's a small lead-in.
+    const peakFrac = VISUAL_PAD_FRAC + sp.delayFrac * (1 - 2 * VISUAL_PAD_FRAC);
+    const delaySec = peakFrac * tMax;
     const liveSweeps = [];
     for (const sw of sp.sweeps) {
       const sweepT = state.simTime - sw.startTime;
@@ -405,7 +470,9 @@ function tick(now) {
         continue;
       }
       const frac = Math.min(1, sweepT / tMax);
-      sw.cursorEl.style.left = `${frac * L.sliderW}px`;
+      const x = frac * L.sliderW;
+      sw.cursorEl.setAttribute('cx', x);
+      sw.cursorEl.setAttribute('cy', waveY(x, sp.waveParams));
       if (sw.armed && sweepT >= delaySec) {
         sw.armed = false;
         emitFromSpeaker(sp, sw.startTime + delaySec);
@@ -724,6 +791,7 @@ function initFreqSlider() {
     updateFreqLabel();
     updateFreqThumb();
     updateToneFreq();
+    for (const sp of state.speakers) updateThumbPosition(sp);
   };
 
   wrap.addEventListener('pointerdown', (e) => {
@@ -801,25 +869,30 @@ function initButtons() {
 // ============================================================
 function onResize() {
   state.layout = computeLayout();
+  const L = state.layout;
   for (let i = 0; i < state.speakers.length; i++) {
     const sp = state.speakers[i];
-    const y = state.layout.yFor(i);
-    sp.x = state.layout.speakerX;
+    const y = L.yFor(i);
+    sp.x = L.speakerX;
     sp.y = y;
-    sp.row.style.left = `${state.layout.sliderLeft}px`;
-    sp.row.style.top  = `${y - state.layout.iconSize/2}px`;
-    sp.row.style.height = `${state.layout.iconSize}px`;
-    sp.sliderEl.style.width = `${state.layout.sliderW}px`;
-    sp.sliderEl.style.height = `${state.layout.iconSize}px`;
-    sp.iconEl.style.width = `${state.layout.iconSize}px`;
-    sp.iconEl.style.height = `${state.layout.iconSize}px`;
-    sp.iconEl.style.marginLeft = `${state.layout.iconMarginLeft}px`;
+    sp.sliderRow.style.left = `${L.sliderLeft}px`;
+    sp.sliderRow.style.top = `${y - L.iconSize/2}px`;
+    sp.sliderRow.style.width = `${L.sliderW}px`;
+    sp.sliderRow.style.height = `${L.iconSize}px`;
+    sp.sliderEl.setAttribute('width', L.sliderW);
+    sp.sliderEl.setAttribute('height', L.iconSize);
+    sp.sliderEl.setAttribute('viewBox', `0 0 ${L.sliderW} ${L.iconSize}`);
+    sp.iconWrap.style.left = `${L.speakerLeft}px`;
+    sp.iconWrap.style.top = `${y - L.iconSize/2}px`;
+    sp.iconWrap.style.width = `${L.iconSize}px`;
+    sp.iconWrap.style.height = `${L.iconSize}px`;
+    sp.iconEl.style.width = `${L.iconSize}px`;
+    sp.iconEl.style.height = `${L.iconSize}px`;
     updateThumbPosition(sp);
   }
   setMicPosition(state.mic.x, state.mic.y);
   resizeGL();
   updateFreqThumb();
-  updateControlBox();
 }
 
 // ============================================================

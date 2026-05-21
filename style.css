@@ -15,7 +15,7 @@ html, body {
 
 #app {
   display: grid;
-  grid-template-columns: 110px 1fr;
+  grid-template-columns: 110px minmax(220px, 280px) 1fr;
   height: 100vh; width: 100vw;
   padding: 18px;
   gap: 14px;
@@ -142,70 +142,59 @@ html, body {
   margin-top: 4px;
 }
 
-/* Speaker rows */
+/* Speaker icons (right panel) */
 #speakers-layer {
   position: absolute; inset: 0;
   z-index: 3;
   pointer-events: none;
 }
-.speaker-row {
+.speaker-icon-wrap {
   position: absolute;
-  display: flex;
-  align-items: center;
   pointer-events: auto;
 }
-.delay-slider {
-  position: relative;
-  height: 36px;
-  cursor: pointer;
+/* Delay sliders (control panel) */
+#sliders-layer {
+  position: absolute; inset: 0;
 }
-.delay-slider .track {
+.slider-row {
   position: absolute;
-  top: 50%;
-  left: 0; right: 0;
-  height: 6px;
-  background: linear-gradient(90deg, #2a2f36, #444c55);
-  border-radius: 3px;
-  transform: translateY(-50%);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
-.delay-slider .thumb {
-  position: absolute;
-  width: 22px; height: 22px;
-  background: radial-gradient(circle at 35% 35%, #5a626b, #20242a);
-  border-radius: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  cursor: grab;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.25);
+.delay-wave {
+  display: block;
+  cursor: ew-resize;
+  overflow: visible;
+  touch-action: none;
 }
-.delay-slider .thumb:active { cursor: grabbing; }
-.delay-slider .cursor {
-  position: absolute;
-  width: 3px; height: 26px;
-  background: #34d05a;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 10px rgba(52, 208, 90, 0.9), 0 0 4px rgba(52, 208, 90, 0.6);
+.wave-line {
+  fill: none;
+  stroke: #2a2f36;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   pointer-events: none;
-  border-radius: 1.5px;
 }
-.delay-slider .thumb {
-  /* Default = how it transitions BACK to grey (slow, smooth fade-off). */
-  transition: background 0.55s ease-out, box-shadow 0.55s ease-out;
+.wave-peak {
+  fill: #2a2f36;
+  stroke: #1f2a36;
+  stroke-width: 1.5;
+  cursor: ew-resize;
+  transition: fill 0.55s ease-out, filter 0.55s ease-out;
 }
-.delay-slider .thumb.fired {
-  background: radial-gradient(circle at 35% 35%, #6fe49e, #1d7a3a);
-  box-shadow: 0 0 12px rgba(52, 208, 90, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.3);
-  /* The .fired transition = how it ramps TO green (fast, snappy fade-on). */
-  transition: background 0.08s cubic-bezier(.2, .7, .3, 1),
-              box-shadow 0.08s cubic-bezier(.2, .7, .3, 1);
+.wave-peak.fired {
+  fill: #34b358;
+  filter: drop-shadow(0 0 8px rgba(52, 208, 90, 0.9));
+  transition: fill 0.08s cubic-bezier(.2, .7, .3, 1), filter 0.08s cubic-bezier(.2, .7, .3, 1);
+}
+.sweep-dot {
+  fill: #34d05a;
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 1;
+  filter: drop-shadow(0 0 6px rgba(52, 208, 90, 0.9));
+  pointer-events: none;
 }
 .speaker-icon {
-  /* margin-left is set dynamically by JS per layout */
   cursor: pointer;
   transition: transform 0.12s cubic-bezier(.34, 1.6, .64, 1), filter 0.1s ease;
-  flex-shrink: 0;
 }
 .speaker-icon:active { transform: scale(0.9); }
 .speaker-icon.fired {
@@ -225,17 +214,16 @@ html, body {
 #mic:active { cursor: grabbing; }
 #mic img { display: block; width: 100%; height: 100%; pointer-events: none; }
 
-/* Control backdrop — wraps both the slider column and the button stack.
- * Sized dynamically in JS (updateControlBox) to match the current layout. */
-#control-box {
-  position: absolute;
-  z-index: 2;
+/* Control panel — shaded translucent box holding sliders + buttons */
+#control-panel {
+  position: relative;
   background: rgba(31, 42, 54, 0.06);
   border: 1px solid rgba(31, 42, 54, 0.12);
   border-radius: 14px;
   box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  overflow: hidden;
 }
-.control-box-label {
+.control-label {
   position: absolute;
   top: 10px; left: 0; right: 0;
   text-align: center;
@@ -244,9 +232,10 @@ html, body {
   text-transform: uppercase;
   color: #5b6b7d;
   font-weight: 600;
+  z-index: 1;
 }
 
-/* Bottom controls — child of #control-box, horizontally centered */
+/* Buttons at the bottom of the control panel, centered horizontally */
 #controls {
   position: absolute;
   bottom: 18px;
@@ -257,6 +246,7 @@ html, body {
   flex-direction: column;
   gap: 8px;
   align-items: stretch;
+  z-index: 2;
 }
 #controls .ctrl-row {
   display: flex;
