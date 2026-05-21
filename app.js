@@ -464,10 +464,13 @@ function tick(now) {
   const L = state.layout;
   const tMax = L.tMax;
   for (const sp of state.speakers) {
-    // Fire time = position of peak along the sweep, in seconds. Includes the
-    // visual-pad offset, so even at delayFrac=0 there's a small lead-in.
-    const peakFrac = VISUAL_PAD_FRAC + sp.delayFrac * (1 - 2 * VISUAL_PAD_FRAC);
-    const delaySec = peakFrac * tMax;
+    const wp = sp.waveParams;
+    // Emit when the sweep dot reaches the wave's leading edge (~2σ before
+    // the peak), not the peak itself — so the field viz begins as the dot
+    // climbs the upramp, and grows naturally until the dot crests the peak.
+    const peakX = wp ? wp.peakX : 0;
+    const leadX = Math.max(0, peakX - 2 * (wp ? wp.sigma : 0));
+    const emitSec = (leadX / L.sliderW) * tMax;
     const liveSweeps = [];
     for (const sw of sp.sweeps) {
       const sweepT = state.simTime - sw.startTime;
@@ -478,10 +481,10 @@ function tick(now) {
       const frac = Math.min(1, sweepT / tMax);
       const x = frac * L.sliderW;
       sw.cursorEl.setAttribute('cx', x);
-      sw.cursorEl.setAttribute('cy', waveY(x, sp.waveParams));
-      if (sw.armed && sweepT >= delaySec) {
+      sw.cursorEl.setAttribute('cy', waveY(x, wp));
+      if (sw.armed && sweepT >= emitSec) {
         sw.armed = false;
-        emitFromSpeaker(sp, sw.startTime + delaySec);
+        emitFromSpeaker(sp, sw.startTime + emitSec);
       }
       liveSweeps.push(sw);
     }
