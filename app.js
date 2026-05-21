@@ -25,12 +25,11 @@ const PACKET_ENVELOPE_MARGIN = 4;
 const N_MIN = 2, N_MAX = 16, N_DEFAULT = 8;
 // Max wave packets concurrently in flight across all speakers. Re-firing a
 // speaker pushes a new packet instead of replacing the previous one, so this
-// caps how many overlapping rings can coexist. 4× N_MAX comfortably absorbs
-// a few rounds of mashing before old packets time out.
-const MAX_PACKETS = 64;
+// caps how many overlapping rings can coexist. Must match the fragment
+// shader's uniform array size + loop bound below.
+const MAX_PACKETS = 256;
 const FREQ_MIN = 220, FREQ_MAX = 2500;
 const FREQ_DEFAULT = 800;
-const SPEAKER_X_FRACTION = 0.22;  // where the speaker column sits across main panel width
 const SLIDER_W_FRACTION  = 0.16;  // slider width as fraction of main panel width
 const BEEP_DURATION = 0.20;       // seconds, per-speaker beep length at mic
 
@@ -136,14 +135,34 @@ function computeLayout() {
   const main = document.getElementById('main-panel');
   const r = main.getBoundingClientRect();
   const w = r.width, h = r.height;
-  const topPad = 70;
-  const botPad = 90;
+  const topPad = 110;
+  const botPad = 175;
   const usable = h - topPad - botPad;
   const n = state.n;
   const iconSize = Math.max(32, Math.min(68, usable / n - 4));
-  const speakerX = w * SPEAKER_X_FRACTION;          // x of icon center (where wave emits)
-  const sliderW  = w * SLIDER_W_FRACTION;
-  const sliderLeft = speakerX - iconSize/2 - 10 - sliderW;
+
+  // ----- Control box drives the layout -----
+  // The box position is authoritative; the slider column sits centered inside
+  // it, and the speaker icons sit just to the right of the box. This keeps
+  // the slider visually centered within "Control" no matter the screen width.
+  const sliderW = w * SLIDER_W_FRACTION;
+  const boxPadX = 28;
+  const boxPadY = 18;
+  const boxLabelHeadroom = 26;       // room above first slider for "CONTROL" label
+  const boxContentMin = 176;         // play button width — box must fit it
+  const boxLeftMargin = 36;          // gap from main-panel left edge to box
+  const iconGap = 26;                // gap from box right edge to speaker icon's left edge
+  const boxContent = Math.max(sliderW, boxContentMin);
+  const boxLeft = boxLeftMargin;
+  const boxWidth = boxContent + 2 * boxPadX;
+  const boxRight = boxLeft + boxWidth;
+  const sliderLeft = boxLeft + boxPadX + (boxContent - sliderW) / 2;
+  const speakerX = boxRight + iconGap + iconSize / 2;
+  const iconMarginLeft = (boxRight + iconGap) - (sliderLeft + sliderW);
+  const firstSliderTop = topPad - iconSize / 2;
+  const boxTop = firstSliderTop - boxPadY - boxLabelHeadroom;
+  const boxHeight = (h - 4) - boxTop;    // ends 4px from main-panel bottom
+
   const yFor = (i) => topPad + usable * (n === 1 ? 0.5 : (i + 0.5) / n);
 
   // tMax sets how long the cursor takes to traverse the slider.
@@ -173,7 +192,8 @@ function computeLayout() {
 
   return {
     w, h,
-    speakerX, sliderW, sliderLeft,
+    speakerX, sliderW, sliderLeft, iconMarginLeft,
+    boxLeft, boxTop, boxWidth, boxHeight,
     topPad, botPad, usable,
     iconSize, tMax,
     rowHeight: usable / n,
@@ -185,6 +205,16 @@ function computeLayout() {
 // ============================================================
 // Build / rebuild speaker rows
 // ============================================================
+function updateControlBox() {
+  const L = state.layout;
+  const box = document.getElementById('control-box');
+  if (!box) return;
+  box.style.left = `${L.boxLeft}px`;
+  box.style.top = `${L.boxTop}px`;
+  box.style.width = `${L.boxWidth}px`;
+  box.style.height = `${L.boxHeight}px`;
+}
+
 function rebuildSpeakers() {
   const layer = document.getElementById('speakers-layer');
   layer.innerHTML = '';
@@ -192,6 +222,7 @@ function rebuildSpeakers() {
   state.packets.length = 0;   // drop in-flight wave packets from prior speaker set
   state.layout = computeLayout();
   const L = state.layout;
+  updateControlBox();
 
   for (let i = 0; i < state.n; i++) {
     const y = L.yFor(i);
@@ -208,7 +239,6 @@ function rebuildSpeakers() {
     slider.style.height = `${L.iconSize}px`;
     slider.innerHTML = `
       <div class="track"></div>
-      <div class="cursor"></div>
       <div class="thumb"></div>
     `;
 
@@ -216,6 +246,7 @@ function rebuildSpeakers() {
     icon.className = 'speaker-icon';
     icon.style.width = `${L.iconSize}px`;
     icon.style.height = `${L.iconSize}px`;
+    icon.style.marginLeft = `${L.iconMarginLeft}px`;
     const iconImg = document.createElement('img');
     iconImg.alt = '';
     iconImg.draggable = false;
@@ -230,12 +261,10 @@ function rebuildSpeakers() {
       x: L.speakerX,                  // wave emits from icon center
       y,
       delayFrac: 0,                   // 0..1, scaled by layout.tMax for actual seconds
-      cursorStart: -Infinity,
-      armed: false,
+      sweeps: [],                     // active PLAY sweeps: { startTime, armed, cursorEl }
       row,
       sliderEl: slider,
       thumbEl: slider.querySelector('.thumb'),
-      cursorEl: slider.querySelector('.cursor'),
       iconEl: icon,
       idx: i,
     };
@@ -273,12 +302,12 @@ function wireSpeakerRow(sp) {
   });
   sp.sliderEl.addEventListener('pointercancel', () => state.dragging = null);
 
-  // Click speaker icon → fire just this one
+  // Click speaker icon → emit immediately (bypass slider/sweep)
   sp.iconEl.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     ensureAudio();
-    fireSpeaker(sp);
+    emitFromSpeaker(sp, state.simTime);
   });
 }
 
@@ -293,15 +322,42 @@ function moveDelayFromEvent(e, sp) {
 // ============================================================
 // Firing speakers
 // ============================================================
-function fireSpeaker(sp) {
-  sp.cursorStart = state.simTime;
-  sp.armed = true;
-  sp.sliderEl.classList.add('armed');
+// Emit a packet + scheduled beep from a speaker at a given sim time. Used both
+// for direct icon clicks (immediate) and for PLAY sweeps reaching the slider
+// position (delayed via the sweep, but the actual emit is still "now-ish").
+function emitFromSpeaker(sp, fireStart) {
+  const firedFreq = state.freq;
+  emitPacket(sp.x, sp.y, fireStart, firedFreq);
+  sp.iconEl.classList.add('fired');
+  sp.thumbEl.classList.add('fired');
+  setTimeout(() => {
+    sp.iconEl.classList.remove('fired');
+    sp.thumbEl.classList.remove('fired');
+  }, 200);
+  const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
+  const travelTime = d / C_VIS;
+  const amp = 0.55 / Math.sqrt(d / 220 + 1);
+  const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
+  const visualLead = 0.7 * SIGMA / C_VIS;
+  // fireStart may be in the past (sweep fire from a slightly earlier instant);
+  // schedule relative to now, not to fireStart, so we never schedule in the past.
+  const ageFromNow = state.simTime - fireStart;
+  const scheduleTime = Math.max(0, travelTime - sysLatency - visualLead - ageFromNow);
+  playBeep(scheduleTime, amp, firedFreq);
+}
+
+// PLAY → push a new sweep onto every speaker. Multiple PLAY presses stack:
+// each gets its own cursor that travels the slider independently.
+function startSweep(sp) {
+  const cursorEl = document.createElement('div');
+  cursorEl.className = 'cursor';
+  sp.sliderEl.appendChild(cursorEl);
+  sp.sweeps.push({ startTime: state.simTime, armed: true, cursorEl });
 }
 
 function fireAll() {
   ensureAudio();
-  for (const sp of state.speakers) fireSpeaker(sp);
+  for (const sp of state.speakers) startSweep(sp);
   const playBtn = document.getElementById('play');
   playBtn.classList.add('fired');
   setTimeout(() => playBtn.classList.remove('fired'), 220);
@@ -340,42 +396,23 @@ function tick(now) {
   const L = state.layout;
   const tMax = L.tMax;
   for (const sp of state.speakers) {
-    const sweepT = state.simTime - sp.cursorStart;
     const delaySec = sp.delayFrac * tMax;
-    if (sp.cursorStart === -Infinity || sweepT < 0) {
-      sp.sliderEl.classList.remove('armed');
-    } else if (sweepT > tMax + 0.2) {
-      sp.sliderEl.classList.remove('armed');
-      sp.cursorStart = -Infinity;
-    } else {
-      sp.sliderEl.classList.add('armed');
-      const frac = Math.min(1, sweepT / tMax);
-      sp.cursorEl.style.left = `${frac * L.sliderW}px`;
-      if (sp.armed && sweepT >= delaySec) {
-        sp.armed = false;
-        const fireStart = sp.cursorStart + delaySec;
-        const firedFreq = state.freq;           // freeze freq at emit-time → visual wavelength
-        emitPacket(sp.x, sp.y, fireStart, firedFreq);
-        sp.iconEl.classList.add('fired');
-        sp.thumbEl.classList.add('fired');
-        setTimeout(() => {
-          sp.iconEl.classList.remove('fired');
-          sp.thumbEl.classList.remove('fired');
-        }, 200);
-        const d = Math.hypot(sp.x - state.mic.x, sp.y - state.mic.y);
-        const travelTime = d / C_VIS;
-        const amp = 0.55 / Math.sqrt(d / 220 + 1);
-        // Two sources of perceived audio lag, both subtracted from schedule:
-        //  1. audio output latency: hardware/driver buffer (Bluetooth is much worse).
-        //  2. visual lead: the Gaussian glow at the mic rises well before peak, so
-        //     the brain marks the "event" at the rising edge — align audio onset to
-        //     that edge (~0.7σ before envelope peak) instead of to peak.
-        const sysLatency = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
-        const visualLead = 0.7 * SIGMA / C_VIS;
-        const scheduleTime = Math.max(0, travelTime - sysLatency - visualLead);
-        playBeep(scheduleTime, amp, firedFreq);
+    const liveSweeps = [];
+    for (const sw of sp.sweeps) {
+      const sweepT = state.simTime - sw.startTime;
+      if (sweepT > tMax + 0.2) {
+        if (sw.cursorEl && sw.cursorEl.parentNode) sw.cursorEl.parentNode.removeChild(sw.cursorEl);
+        continue;
       }
+      const frac = Math.min(1, sweepT / tMax);
+      sw.cursorEl.style.left = `${frac * L.sliderW}px`;
+      if (sw.armed && sweepT >= delaySec) {
+        sw.armed = false;
+        emitFromSpeaker(sp, sw.startTime + delaySec);
+      }
+      liveSweeps.push(sw);
     }
+    sp.sweeps = liveSweeps;
   }
 
   renderWaveField();
@@ -453,9 +490,9 @@ uniform vec2 uResolution;   // physical pixels (matches gl_FragCoord)
 uniform float uDpr;
 uniform float uTime;
 uniform int uN;             // number of live packets this frame
-uniform vec2 uPos[64];
-uniform float uStart[64];
-uniform float uK[64];       // per-packet visual wavenumber (depends on freq at emit time)
+uniform vec2 uPos[256];
+uniform float uStart[256];
+uniform float uK[256];      // per-packet visual wavenumber (depends on freq at emit time)
 uniform float uC;
 uniform float uSigma;
 uniform float uLifetime;
@@ -463,7 +500,7 @@ void main() {
   // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
   vec2 p = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y) / uDpr;
   float field = 0.0;
-  for (int i = 0; i < 64; i++) {
+  for (int i = 0; i < 256; i++) {
     if (i >= uN) break;
     float dt = uTime - uStart[i];
     if (dt < 0.0 || dt > uLifetime) continue;
@@ -776,11 +813,13 @@ function onResize() {
     sp.sliderEl.style.height = `${state.layout.iconSize}px`;
     sp.iconEl.style.width = `${state.layout.iconSize}px`;
     sp.iconEl.style.height = `${state.layout.iconSize}px`;
+    sp.iconEl.style.marginLeft = `${state.layout.iconMarginLeft}px`;
     updateThumbPosition(sp);
   }
   setMicPosition(state.mic.x, state.mic.y);
   resizeGL();
   updateFreqThumb();
+  updateControlBox();
 }
 
 // ============================================================

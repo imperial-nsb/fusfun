@@ -41,20 +41,24 @@
   <div id="main-panel">
     <canvas id="wave-canvas"></canvas>
 
+    <div id="control-box">
+      <div class="control-box-label">Control</div>
+      <div id="controls">
+        <div class="ctrl-row">
+          <button class="btn" id="btn-random">Random</button>
+          <button class="btn" id="btn-focus">Focus</button>
+        </div>
+        <button id="play" aria-label="Play all">
+          <img data-icon="play" alt="" draggable="false" />
+        </button>
+        <div id="play-hint">press space</div>
+      </div>
+    </div>
+
     <div id="speakers-layer"></div>
 
     <div id="mic">
       <img data-icon="microphone" alt="" draggable="false" />
-    </div>
-
-    <button id="play" aria-label="Play all">
-      <img data-icon="play" alt="" draggable="false" />
-    </button>
-    <div id="play-hint">press space</div>
-
-    <div id="controls">
-      <button class="btn" id="btn-random">Random</button>
-      <button class="btn" id="btn-focus">Focus</button>
     </div>
 
     <div id="brand">
