@@ -122,6 +122,26 @@ html, body {
   z-index: 1;
 }
 
+#envelope-toggle {
+  position: absolute;
+  bottom: 18px; left: 18px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(31, 42, 54, 0.06);
+  border: 1px solid rgba(31, 42, 54, 0.12);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #2a3a4d;
+  cursor: pointer;
+  user-select: none;
+}
+#envelope-toggle input { cursor: pointer; }
+
 #brand {
   position: absolute;
   bottom: 18px; right: 18px;

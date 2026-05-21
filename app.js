@@ -58,6 +58,9 @@ const state = {
   freqThumbPos: 0,      // 0..1, 0=bottom (low), 1=top (high)
   simTime: 0,
   layout: null,         // computed each resize
+  envelope: false,      // toggle: accumulate max |field| over time
+  envelopeNeedsClear: false,
+  envelopeFadeCounter: 0,
 };
 
 // ============================================================
@@ -602,7 +605,11 @@ uniform float uK[256];      // per-packet visual wavenumber (depends on freq at 
 uniform float uSigmaFloor;  // minimum envelope width in pixels (high-freq clamp)
 uniform float uC;
 uniform float uLifetime;
+uniform int uEnvelope;      // 1 = subtract |field| from white (light envelope); 0 = bipolar red/blue field
+uniform int uFadeMode;      // 1 = output uFadeColor (used to gently fade canvas back to white)
+uniform vec4 uFadeColor;
 void main() {
+  if (uFadeMode == 1) { outColor = uFadeColor; return; }
   // Convert physical pixel coord → logical (top-left origin), so we can compare with uPos
   vec2 p = vec2(gl_FragCoord.x, uResolution.y - gl_FragCoord.y) / uDpr;
   float field = 0.0;
@@ -622,13 +629,21 @@ void main() {
     field += env * osc / sqrt(r + 50.0);
   }
   float v = clamp(field * 7.0, -1.0, 1.0);
-  vec3 base = vec3(1.0);
-  vec3 hot  = vec3(0.92, 0.18, 0.18);
-  vec3 cold = vec3(0.16, 0.36, 0.86);
-  vec3 col;
-  if (v > 0.0) col = mix(base, hot, v);
-  else         col = mix(base, cold, -v);
-  outColor = vec4(col, 1.0);
+  if (uEnvelope == 1) {
+    // Light-mode envelope: subtract |amplitude| from white. Combined with
+    // MIN blending in JS, each pixel keeps the darkest tint it's seen —
+    // i.e. the peak amplitude that has passed through it.
+    float amp = abs(v);
+    outColor = vec4(1.0 - amp * 0.55, 1.0 - amp * 0.80, 1.0 - amp * 0.25, 1.0);
+  } else {
+    vec3 base = vec3(1.0);
+    vec3 hot  = vec3(0.92, 0.18, 0.18);
+    vec3 cold = vec3(0.16, 0.36, 0.86);
+    vec3 col;
+    if (v > 0.0) col = mix(base, hot, v);
+    else         col = mix(base, cold, -v);
+    outColor = vec4(col, 1.0);
+  }
 }`;
 
 function compileShader(type, src) {
@@ -644,7 +659,7 @@ function compileShader(type, src) {
 
 function initGL() {
   canvas = document.getElementById('wave-canvas');
-  gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
+  gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
   if (!gl) {
     alert("WebGL2 is required. Please use a modern browser (Chrome / Safari / Firefox).");
     return;
@@ -681,6 +696,9 @@ function initGL() {
     uK:          gl.getUniformLocation(program, 'uK'),
     uSigmaFloor: gl.getUniformLocation(program, 'uSigmaFloor'),
     uLifetime:   gl.getUniformLocation(program, 'uLifetime'),
+    uEnvelope:   gl.getUniformLocation(program, 'uEnvelope'),
+    uFadeMode:   gl.getUniformLocation(program, 'uFadeMode'),
+    uFadeColor:  gl.getUniformLocation(program, 'uFadeColor'),
   };
 
   gl.uniform1f(uniforms.uC, C_VIS);
@@ -706,6 +724,44 @@ function renderWaveField() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const lifetime = state.layout.packetLifetime;
   pruneExpiredPackets(state.simTime);
+
+  // Both modes use a white background. Envelope mode accumulates the
+  // darkest (= highest |amplitude|) seen at each pixel via MIN blending;
+  // normal mode redraws the current field each frame with no blending.
+  if (state.envelopeNeedsClear) {
+    gl.disable(gl.BLEND);
+    gl.clearColor(1.0, 1.0, 1.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    state.envelopeNeedsClear = false;
+  }
+  if (state.envelope) {
+    // Fade pass: smaller alpha applied more often so the decay reads as a
+    // smooth fade instead of stepped snaps. Per-pass change stays above the
+    // 8-bit framebuffer's rounding threshold so dark trails keep lightening.
+    // ~0.01 alpha every ~20 frames (~333ms) ≈ ~75s for a 90% fade.
+    state.envelopeFadeCounter++;
+    if (state.envelopeFadeCounter >= 20) {
+      state.envelopeFadeCounter = 0;
+      gl.enable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.uniform1i(uniforms.uFadeMode, 1);
+      gl.uniform4f(uniforms.uFadeColor, 1.0, 1.0, 1.0, 0.01);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.uniform1i(uniforms.uFadeMode, 0);
+    }
+    // Field pass: MIN-blend the current frame's |amplitude|-on-white over the canvas.
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.MIN);
+    gl.blendFunc(gl.ONE, gl.ONE);
+  } else {
+    gl.disable(gl.BLEND);
+    gl.clearColor(1.0, 1.0, 1.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform1i(uniforms.uFadeMode, 0);
+  }
+  gl.uniform1i(uniforms.uEnvelope, state.envelope ? 1 : 0);
+
   gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
   gl.uniform1f(uniforms.uDpr, dpr);
   gl.uniform1f(uniforms.uTime, state.simTime);
@@ -767,7 +823,7 @@ function initMic() {
   if (img.complete && img.naturalWidth) resize();
   else img.addEventListener('load', resize);
 
-  setMicPosition(state.layout.w * 0.7, state.layout.h * 0.5);
+  setMicPosition(state.layout.w * 0.7, state.layout.topPad + state.layout.usable / 2);
 
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -895,6 +951,16 @@ function initButtons() {
   document.getElementById('btn-minus').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (state.n > N_MIN) { state.n--; rebuildSpeakers(); }
+  });
+
+  const envCheckbox = document.getElementById('envelope-checkbox');
+  // Browsers persist checkbox state across refresh — sync our state to whatever
+  // the browser restored so the visible checkmark matches actual behavior.
+  state.envelope = envCheckbox.checked;
+  state.envelopeNeedsClear = true;
+  envCheckbox.addEventListener('change', (e) => {
+    state.envelope = e.target.checked;
+    state.envelopeNeedsClear = true;     // wipe canvas to the new mode's background
   });
 
   // Spacebar = play (suppress page scroll, ignore key repeat)
